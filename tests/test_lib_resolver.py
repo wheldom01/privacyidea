@@ -948,7 +948,6 @@ class LDAPResolverTestCase(MyTestCase):
                       'NOREFERRALS': True
         })
 
-
         user = "bob"
         user_id = y.getUserId(user)
         # Test MODIFY_DELETE
@@ -969,7 +968,8 @@ class LDAPResolverTestCase(MyTestCase):
         userinfo = y.getUserInfo(user_id)
         self.assertEqual(userinfo.get("givenname"), "Charlie")
         self.assertFalse(userinfo.get("email"))
-
+        r = y.update_user(user_id, {"password": "test"})
+        r = y.checkPass(user_id, "test")
 # TODO
 ###        uname = y.getUsername(uid)
 ###        self.assertEqual(uname, "achmed2")
