@@ -954,7 +954,7 @@ class LDAPResolverTestCase(MyTestCase):
                                   '"surname" : "sn", '
                                   '"givenname" : "givenName", '
                                   '"accountExpires": "accountExpires" }',
-                      'UIDTYPE': 'dn',
+                      'UIDTYPE': 'DN',
                       'NOREFERRALS': True
         })
 
