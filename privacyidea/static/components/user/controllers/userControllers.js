@@ -58,7 +58,7 @@ angular.module("privacyideaApp")
 
         // The user can fetch his own information.
         $scope.getUserDetails = function () {
-            UserFactory.getUsers({}, function (data) {
+            UserFactory.getUserDetails({}, function (data) {
                 $scope.User = data.result.value[0];
                 $scope.User.password = "";
             });
@@ -113,7 +113,7 @@ angular.module("privacyideaApp")
         };
 
         $scope.getUserDetails = function () {
-            UserFactory.getUsers({
+            UserFactory.getUserDetails({
                 username: $scope.username,
                 realm: $scope.realmname
             }, function (data) {
@@ -131,6 +131,8 @@ angular.module("privacyideaApp")
                                 {type: "info"});
                     // we also need to update the user list
                     $scope._getUsers();
+                } else {
+                    inform.add(gettextCatalog.getString("Failed to update user."), {type: "danger"});
                 }
             });
         };
@@ -147,6 +149,8 @@ angular.module("privacyideaApp")
                                 {type: "info"});
                     $scope._getUsers();
                     $location.path("/user/list");
+                }  else {
+                    inform.add(gettextCatalog.getString("Failed to delete user."), {type: "danger"});
                 }
             });
         };
@@ -211,7 +215,7 @@ angular.module("privacyideaApp")
             UserFactory.getUsers(params,
                 function (data) {
                     console.log("success");
-                    userlist = data.result.value;
+                    var userlist = data.result.value;
                     // The userlist is the complete list of the users.
                     $scope.usercount = userlist.length;
                     var start = ($scope.params.page - 1) * $scope.usersPerPage;

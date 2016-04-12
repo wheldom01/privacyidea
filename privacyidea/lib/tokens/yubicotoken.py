@@ -5,6 +5,8 @@
 #  License:  AGPLv3
 #  contact:  http://www.privacyidea.org
 #
+#  2016-04-04 Cornelius Kölbel <cornelius@privacyidea.org>
+#             Use central yubico_api_signature function
 #  2015-01-28 Rewrite during flask migration
 #             Change to use requests module
 #             Cornelius Kölbel <cornelius@privacyidea.org>
@@ -43,15 +45,14 @@ from privacyidea.api.lib.utils import getParam
 from privacyidea.lib.config import get_from_config
 from privacyidea.lib.log import log_with
 from privacyidea.lib.tokenclass import TokenClass
-from hashlib import sha1
-import hmac
-import re
+from privacyidea.lib.tokens.yubikeytoken import (yubico_check_api_signature,
+                                                 yubico_api_signature)
 import os
 import binascii
 
 YUBICO_LEN_ID = 12
 YUBICO_LEN_OTP = 44
-YUBICO_URL = "http://api.yubico.com/wsapi/2.0/verify"
+YUBICO_URL = "https://api.yubico.com/wsapi/2.0/verify"
 DEFAULT_CLIENT_ID = 20771
 DEFAULT_API_KEY = "9iE9DRkPHQDJbAFFC31/dum5I54="
 
@@ -60,7 +61,7 @@ required = False
 
 log = logging.getLogger(__name__)
 
-###############################################
+
 class YubicoTokenClass(TokenClass):
 
     def __init__(self, db_token):
@@ -117,8 +118,8 @@ class YubicoTokenClass(TokenClass):
     def update(self, param):
         tokenid = getParam(param, "yubico.tokenid", required)
         if len(tokenid) < YUBICO_LEN_ID:
-            log.error("The tokenid needs to be %i characters long!" % YUBICO_LEN_ID)
-            raise Exception("The Yubikey token ID needs to be %i characters long!" % YUBICO_LEN_ID)
+            log.error("The tokenid needs to be {0:d} characters long!".format(YUBICO_LEN_ID))
+            raise Exception("The Yubikey token ID needs to be {0:d} characters long!".format(YUBICO_LEN_ID))
 
         if len(tokenid) > YUBICO_LEN_ID:
             tokenid = tokenid[:YUBICO_LEN_ID]
@@ -138,9 +139,10 @@ class YubicoTokenClass(TokenClass):
 
         apiId = get_from_config("yubico.id", DEFAULT_CLIENT_ID)
         apiKey = get_from_config("yubico.secret", DEFAULT_API_KEY)
+        yubico_url = get_from_config("yubico.url", YUBICO_URL)
 
         if apiKey == DEFAULT_API_KEY or apiId == DEFAULT_CLIENT_ID:
-            log.warning("Usage of default apiKey or apiId not recomended!")
+            log.warning("Usage of default apiKey or apiId not recommended!")
             log.warning("Please register your own apiKey and apiId at "
                         "yubico website!")
             log.warning("Configure of apiKey and apiId at the "
@@ -148,7 +150,7 @@ class YubicoTokenClass(TokenClass):
 
         tokenid = self.get_tokeninfo("yubico.tokenid")
         if len(anOtpVal) < 12:
-            log.warning("The otpval is too short: %r" % anOtpVal)
+            log.warning("The otpval is too short: {0!r}".format(anOtpVal))
         elif anOtpVal[:12] != tokenid:
             log.warning("The tokenid in the OTP value does not match "
                         "the assigned token!")
@@ -157,37 +159,26 @@ class YubicoTokenClass(TokenClass):
             p = {'nonce': nonce,
                  'otp': anOtpVal,
                  'id': apiId}
+            # Also send the signature to the yubico server
+            p["h"] = yubico_api_signature(p, apiKey)
 
             try:
-                r = requests.post(YUBICO_URL,
+                r = requests.post(yubico_url,
                                   data=p)
 
                 if r.status_code == requests.codes.ok:
                     response = r.text
-                    m = re.search('status=(\w+)[\n,\r,\\\]', response)
-                    result = m.group(1)
-
-                    m = re.search('nonce=(\w+)[\n,\r,\\\]', response)
-                    return_nonce = m.group(1)
-
-                    m = re.search('h=(.+?)[\n,\r,\\\]', response)
-                    return_hash = m.group(1)
-
-                    # check signature:
-                    elements = response.split('\r')
-                    hash_elements = []
+                    elements = response.split()
+                    data = {}
                     for elem in elements:
-                        elem = elem.strip('\n')
-                        if elem and elem[:2] != "h=":
-                            hash_elements.append(elem)
+                        k, v = elem.split("=", 1)
+                        data[k] = v
+                    result = data.get("status")
+                    return_nonce = data.get("nonce")
+                    # check signature:
+                    signature_valid = yubico_check_api_signature(data, apiKey)
 
-                    hash_input = '&'.join(sorted(hash_elements))
-                    hashed_data = binascii.b2a_base64(hmac.new(
-                                                               binascii.a2b_base64(apiKey),
-                                                               hash_input,
-                                                               sha1).digest())[:-1]
-
-                    if hashed_data != return_hash:
+                    if signature_valid:
                         log.error("The hash of the return from the Yubico "
                                   "Cloud server does not match the data!")
 
@@ -197,17 +188,17 @@ class YubicoTokenClass(TokenClass):
 
                     if result == "OK":
                         res = 1
-                        if nonce != return_nonce or hashed_data != return_hash:
+                        if nonce != return_nonce or not signature_valid:
                             log.warning("Nonce and Hash do not match.")
                             res = -2
                     else:
                         # possible results are listed here:
                         # https://github.com/Yubico/yubikey-val/wiki/ValidationProtocolV20
-                        log.warning("failed with %r" % result)
+                        log.warning("failed with {0!r}".format(result))
 
             except Exception as ex:
                 log.error("Error getting response from Yubico Cloud Server"
-                          " (%r): %r" % (YUBICO_URL, ex))
-                log.debug("%s" % traceback.format_exc())
+                          " (%r): %r" % (yubico_url, ex))
+                log.debug("{0!s}".format(traceback.format_exc()))
 
         return res

@@ -15,7 +15,7 @@ info:
 	@echo "make ppa-dev      - upload to launchpad development repo"
 	
 #VERSION=1.3~dev5
-SHORT_VERSION=2.11~dev0
+SHORT_VERSION=2.12dev1
 #SHORT_VERSION=2.10~dev7
 VERSION_JESSIE=${SHORT_VERSION}
 VERSION=${SHORT_VERSION}
@@ -33,6 +33,16 @@ clean:
 	rm -fr cover
 	rm -f .coverage
 	(cd doc; make clean)
+
+setversion:
+	vim Makefile
+	vim setup.py
+	vim deploy/debian-ubuntu/changelog
+	vim deploy/debian-virtualenv/changelog
+	vim doc/conf.py
+	vim Changelog
+	@echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+	@echo "Please set a tag like:  git tag 3.17"
 
 translate:
 	grunt nggettext_extract

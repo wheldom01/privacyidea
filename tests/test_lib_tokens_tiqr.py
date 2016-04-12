@@ -368,6 +368,7 @@ class TiQRTokenTestCase(MyTestCase):
         env = builder.get_environ()
         # Set the remote address so that we can filter for it
         env["REMOTE_ADDR"] = "10.0.0.1"
+        g.client_ip = env["REMOTE_ADDR"]
         req = Request(env)
         req.all_data = {"action": "metadata",
                         "session": session,
@@ -436,7 +437,7 @@ class TiQRTokenTestCase(MyTestCase):
 
         # First, send a wrong response
         req.all_data = {"response": "12345",
-                        "userId": "cornelius_%s" % self.realm1,
+                        "userId": "cornelius_{0!s}".format(self.realm1),
                         "sessionKey": session,
                         "operation": "login"}
         r = TiqrTokenClass.api_endpoint(req, g)
@@ -445,7 +446,7 @@ class TiQRTokenTestCase(MyTestCase):
 
         # Send the correct response
         req.all_data = {"response": response,
-                        "userId": "cornelius_%s" % self.realm1,
+                        "userId": "cornelius_{0!s}".format(self.realm1),
                         "sessionKey": session,
                         "operation": "login"}
         r = TiqrTokenClass.api_endpoint(req, g)
@@ -455,7 +456,7 @@ class TiQRTokenTestCase(MyTestCase):
         # Send the same response a second time would not work
         # since the Challenge is marked as answered
         req.all_data = {"response": response,
-                        "userId": "cornelius_%s" % self.realm1,
+                        "userId": "cornelius_{0!s}".format(self.realm1),
                         "sessionKey": session,
                         "operation": "login"}
         r = TiqrTokenClass.api_endpoint(req, g)

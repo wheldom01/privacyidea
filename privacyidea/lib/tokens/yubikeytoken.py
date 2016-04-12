@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
 #
+#  2016-04-04 Cornelius Kölbel <cornelius@privacyidea.org>
+#             Move the API signature static methods to functions.
+#  2016-03-23 Jochen Hein <jochen@jochen.org>
+#             Fix signature verification/generation
 #  2016-03-15 Cornelius Kölbel <cornelius@privacyidea.org>
 #             Keep backward compatibility
 #  2016-03-08 Jochen Hein <jochen@jochen.org>
@@ -68,6 +72,50 @@ required = False
 
 
 log = logging.getLogger(__name__)
+
+
+def yubico_api_signature(data, api_key):
+    """
+    Get a dictionary "data", sort the dictionary by the keys
+    and sign it HMAC-SHA1 with the api_key
+
+    :param data: The data to be signed
+    :type data: dict
+    :param api_key: base64 encoded API key
+    :type api_key: basestring
+    :return: base64 encoded signature
+    """
+    r = dict(data)
+    if 'h' in r:
+        del r['h']
+    keys = sorted(r.keys())
+    data_string = ""
+    for key in keys:
+        data_string += "{0!s}={1!s}&".format(key, r.get(key))
+    data_string = data_string.strip("&")
+    api_key_bin = base64.b64decode(api_key)
+    # generate the signature
+    h = hmac.new(api_key_bin, data_string, sha1).digest()
+    h_b64 = base64.b64encode(h)
+    return h_b64
+
+
+def yubico_check_api_signature(data, api_key, signature=None):
+    """
+    Verfiy the signature of the data.
+    Either provide the signatrue as parameter or take it from the data
+
+    :param data: The data to be signed
+    :type data: dict
+    :param api_key: base64 encoded API key
+    :type api_key: basestring
+    :param signature: the signature to be verified
+    :type signature: base64 encoded string
+    :return: base64 encoded signature
+    """
+    if not signature:
+        signature = data.get('h')
+    return signature == yubico_api_signature(data, api_key)
 
 
 class YubikeyTokenClass(TokenClass):
@@ -222,14 +270,14 @@ class YubikeyTokenClass(TokenClass):
         # CRC-16 checksum of the whole decrypted OTP should give a fixed
         # residual
         # of 0xf0b8 (see Yubikey-Manual - Chapter 6: Implementation details).
-        log.debug("calculated checksum (61624): %r" % checksum(msg_hex))
+        log.debug("calculated checksum (61624): {0!r}".format(checksum(msg_hex)))
         if checksum(msg_hex) != 0xf0b8:  # pragma: no cover
-            log.warning("CRC checksum for token %r failed" % serial)
+            log.warning("CRC checksum for token {0!r} failed".format(serial))
             return -3
 
         uid = msg_hex[0:12]
-        log.debug("uid: %r" % uid)
-        log.debug("prefix: %r" % binascii.hexlify(modhex_decode(yubi_prefix)))
+        log.debug("uid: {0!r}".format(uid))
+        log.debug("prefix: {0!r}".format(binascii.hexlify(modhex_decode(yubi_prefix))))
         # usage_counter can go from 1 – 0x7fff
         usage_counter = msg_hex[12:16]
         timestamp = msg_hex[16:22]
@@ -237,37 +285,36 @@ class YubikeyTokenClass(TokenClass):
         session_counter = msg_hex[22:24]
         random = msg_hex[24:28]
         crc = msg_hex[28:]
-        log.debug("decrypted: usage_count: %r, session_count: %r" %
-                  (usage_counter, session_counter))
+        log.debug("decrypted: usage_count: {0!r}, session_count: {1!r}".format(usage_counter, session_counter))
 
         # create the counter as integer
         # Note: The usage counter is stored LSB!
 
         count_hex = usage_counter[2:4] + usage_counter[0:2] + session_counter
         count_int = int(count_hex, 16)
-        log.debug('decrypted counter: %r' % count_int)
+        log.debug('decrypted counter: {0!r}'.format(count_int))
 
         tokenid = self.get_tokeninfo("yubikey.tokenid")
         if not tokenid:
-            log.debug("Got no tokenid for %r. Setting to %r." % (serial, uid))
+            log.debug("Got no tokenid for {0!r}. Setting to {1!r}.".format(serial, uid))
             tokenid = uid
             self.add_tokeninfo("yubikey.tokenid", tokenid)
 
         prefix = self.get_tokeninfo("yubikey.prefix")
         if not prefix:
-            log.debug("Got no prefix for %r. Setting to %r." % (serial, yubi_prefix))
+            log.debug("Got no prefix for {0!r}. Setting to {1!r}.".format(serial, yubi_prefix))
             self.add_tokeninfo("yubikey.prefix", yubi_prefix)
 
         if tokenid != uid:
             # wrong token!
-            log.warning("The wrong token was presented for %r. Got %r, expected %r."
+            log.warning("The wrong token was presented for %r. "
+                        "Got %r, expected %r."
                         % (serial, uid, tokenid))
             return -2
 
-
         # TODO: We also could check the timestamp
         # see http://www.yubico.com/wp-content/uploads/2013/04/YubiKey-Manual-v3_1.pdf
-        log.debug('compare counter to database counter: %r' % self.token.count)
+        log.debug('compare counter to database counter: {0!r}'.format(self.token.count))
         if count_int >= self.token.count:
             res = count_int
             # on success we save the used counter
@@ -280,31 +327,11 @@ class YubikeyTokenClass(TokenClass):
         """
         Return the symmetric key for the given apiId.
 
-        :param apiId: The base64 encoded API ID
+        :param api_id: The base64 encoded API ID
         :return: the base64 encoded API Key or None
         """
-        api_key = get_from_config("yubikey.apiid.%s" % api_id)
+        api_key = get_from_config("yubikey.apiid.{0!s}".format(api_id))
         return api_key
-
-    @staticmethod
-    def _api_signature(data, api_key):
-        """
-        Get a dictionary "data", sort the dictionary by the keys
-        and sign it HMAC-SHA1 with the api_key
-        :param data: dictionary
-        :param api_key: base64 encoded API key
-        :return: base64 encoded signature
-        """
-        keys = sorted(data.keys())
-        data_string = ""
-        for key in keys:
-            data_string += "%s=%s&" % (key, data.get(key))
-        data_string.strip("&")
-        api_key_bin = base64.b64decode(api_key)
-        # generate the signature
-        h = hmac.new(api_key_bin, data_string, sha1).digest()
-        h_b64 = base64.b64encode(h)
-        return h_b64
 
     @classmethod
     def api_endpoint(cls, request, g):
@@ -329,11 +356,12 @@ class YubikeyTokenClass(TokenClass):
         Optional parameters h, timestamp, sl, timeout are not supported at the
         moment.
         """
-        # TODO: If the request contains a signature (h) we verify the signature
         id = getParam(request.all_data, "id")
         otp = getParam(request.all_data, "otp")
         nonce = getParam(request.all_data, "nonce")
+        signature = getParam(request.all_data, "h")
         status = "MISSING_PARAMETER"
+
         timestamp = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ%f")
         data = {'otp': otp,
                 'nonce': nonce,
@@ -345,15 +373,19 @@ class YubikeyTokenClass(TokenClass):
             data['status'] = "NO_SUCH_CLIENT"
             data['h'] = ""
         elif otp and id and nonce:
-            options = {"g": g,
-                       "clientip": request.remote_addr}
-            res, opt = cls.check_yubikey_pass(otp)
-            if res:
-                data['status'] = "OK"
+            if signature and not yubico_check_api_signature(request.all_data,
+                                                            api_key, signature):
+                # yubico server don't send nonce and otp back. Do we want that?
+                data['status'] = "BAD_SIGNATURE"
             else:
-                data['status'] = "BAD_OTP"
+                res, opt = cls.check_yubikey_pass(otp)
+                if res:
+                    data['status'] = "OK"
+                else:
+                    # Do we want REPLAYED_OTP too?
+                    data['status'] = "BAD_OTP"
 
-            data["h"] = cls._api_signature(data, api_key)
+            data["h"] = yubico_api_signature(data, api_key)
         response = """nonce={nonce}
 otp={otp}
 status={status}
@@ -393,15 +425,16 @@ h={h}
         from privacyidea.lib.token import check_token_list
 
         # See if the prefix matches the serial number
-        try:
-            # Keep the backward compatibility
-            serialnum = "UBAM" + modhex_decode(prefix)
-            for i in range(1, 3):
-                s = "%s_%s" % (serialnum, i)
-                toks = get_tokens(serial=s)
-                token_list.extend(toks)
-        except TypeError as exx:  # pragma: no cover
-            log.error("Failed to convert serialnumber: %r" % exx)
+        if prefix[:2] != "vv" and prefix[:2] != "cc":
+            try:
+                # Keep the backward compatibility
+                serialnum = "UBAM" + modhex_decode(prefix)
+                for i in range(1, 3):
+                    s = "{0!s}_{1!s}".format(serialnum, i)
+                    toks = get_tokens(serial=s)
+                    token_list.extend(toks)
+            except TypeError as exx:  # pragma: no cover
+                log.error("Failed to convert serialnumber: {0!r}".format(exx))
 
         # Now, we see, if the prefix matches the new version
         if not token_list:
@@ -413,8 +446,8 @@ h={h}
             token_list.extend(token_candidate_list)
 
         if not token_list:
-            opt['action_detail'] = ("The prefix %s could not be found!" %
-                                    prefix)
+            opt['action_detail'] = ("The prefix {0!s} could not be found!".format(
+                                    prefix))
             return res, opt
 
         (res, opt) = check_token_list(token_list, passw)

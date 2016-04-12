@@ -67,12 +67,14 @@ def before_request():
     # can be passed to the innerpolicies.
     g.policy_object = PolicyClass()
     g.audit_object = getAudit(current_app.config)
+    # We can add logic to use X-Forwarded-For
+    g.client_ip = request.remote_addr
     g.audit_object.log({"success": False,
                         "action_detail": "",
-                        "client": request.remote_addr,
+                        "client": g.client_ip,
                         "client_user_agent": request.user_agent.browser,
                         "privacyidea_server": privacyidea_server,
-                        "action": "%s %s" % (request.method, request.url_rule),
+                        "action": "{0!s} {1!s}".format(request.method, request.url_rule),
                         "info": ""})
 
 
@@ -114,5 +116,5 @@ def token(ttype=None):
     if res[0] == "json":
         return jsonify(res[1])
     elif res[0] in ["html", "plain"]:
-        return Response(res[1], mimetype="text/%s" % res[0])
+        return Response(res[1], mimetype="text/{0!s}".format(res[0]))
 

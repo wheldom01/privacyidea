@@ -42,15 +42,15 @@ log = logging.getLogger(__name__)
 caconnector_blueprint = Blueprint('caconnector_blueprint', __name__)
 
 
-@log_with(log)
 @caconnector_blueprint.route('/<name>', methods=['GET'])
 @caconnector_blueprint.route('/', methods=['GET'])
+@log_with(log)
 #@prepolicy(check_base_action, request, ACTION.CACONNECTORREAD)
 def get_caconnector_api(name=None):
     """
     returns a json list of the available applications
     """
-    g.audit_object.log({"detail": "%s" % name})
+    g.audit_object.log({"detail": "{0!s}".format(name)})
     role = g.logged_in_user.get("role")
     res = get_caconnector_list(filter_caconnector_name=name,
                                return_config=(role == "admin"))
@@ -58,8 +58,8 @@ def get_caconnector_api(name=None):
     return send_result(res)
 
 
-@log_with(log)
 @caconnector_blueprint.route('/<name>', methods=['POST'])
+@log_with(log)
 @prepolicy(check_base_action, request, ACTION.CACONNECTORWRITE)
 @admin_required
 def save_caconnector_api(name=None):
@@ -68,21 +68,21 @@ def save_caconnector_api(name=None):
     """
     param = request.all_data
     param["caconnector"] = name
-    g.audit_object.log({"detail": "%s" % name})
+    g.audit_object.log({"detail": "{0!s}".format(name)})
     res = save_caconnector(param)
     g.audit_object.log({"success": True})
     return send_result(res)
 
 
-@log_with(log)
 @caconnector_blueprint.route('/<name>', methods=['DELETE'])
+@log_with(log)
 @prepolicy(check_base_action, request, ACTION.CACONNECTORDELETE)
 @admin_required
 def delete_caconnector_api(name=None):
     """
     returns a json list of the available applications
     """
-    g.audit_object.log({"detail": "%s" % name})
+    g.audit_object.log({"detail": "{0!s}".format(name)})
     res = delete_caconnector(name)
     g.audit_object.log({"success": True})
     return send_result(res)

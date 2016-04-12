@@ -36,13 +36,13 @@ class SMSError(Exception):
         self.description = description
 
     def __repr__(self):
-        ret = '%s(error_id=%r, description=%r)' % (type(self).__name__,
+        ret = '{0!s}(error_id={1!r}, description={2!r})'.format(type(self).__name__,
                                                    self.error_id,
                                                    self.description)
         return ret
 
     def __str__(self):
-        ret = '%s' % self.description
+        ret = '{0!s}'.format(self.description)
         return ret
 
 
@@ -62,8 +62,15 @@ class ISMSProvider(object):
         """
         return True
     
-    def load_config(self, configDict):
-        self.config = configDict
+    def load_config(self, config_dict):
+        """
+        Load the configuration dictionary
+
+        :param config_dict: The conifugration of the SMS provider
+        :type config_dict: dict
+        :return: None
+        """
+        self.config = config_dict
 
 
 def get_sms_provider_class(packageName, className):

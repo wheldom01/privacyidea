@@ -75,6 +75,19 @@
             </table>
         </div>
     </div>
+
+    <div class="text-center"
+         ng-show="checkRight('policywrite')">
+        <button ng-click="createPolicy()"
+                id="createPolicyButton"
+                ng-disabled="formPolicyAdd.$invalid"
+                class="btn btn-primary">
+            <div class="glyphicon glyphicon-plus" translate>
+                Create Policy
+            </div>
+        </button>
+    </div>
+
     <div class="form-group">
         <label for="scope" class="col-sm-3 control-label">
             Scope</label>
@@ -254,6 +267,18 @@
                    type="text"
                    ng-model="params.client"
                    placeholder="10.0.0.0/8, !10.0.0.124"/>
+        </div>
+    </div>
+
+    <div class="form-group">
+        <label for="time" class="col-sm-3 control-label"
+               translate>Valid time</label>
+
+        <div class="col-sm-9">
+            <input name="time" class="form-control"
+                   type="text"
+                   ng-model="params.time"
+                   placeholder="Mon-Fri: 9-18, Sat: 10-15"/>
         </div>
     </div>
 

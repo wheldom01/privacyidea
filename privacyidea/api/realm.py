@@ -71,8 +71,8 @@ defaultrealm_blueprint = Blueprint('defaultrealm_blueprint', __name__)
 #
 #
 
-@log_with(log)
 @realm_blueprint.route('/<realm>', methods=['POST'])
+@log_with(log)
 @prepolicy(check_base_action, request, ACTION.RESOLVERWRITE)
 def set_realm_api(realm=None):
     """
@@ -139,14 +139,14 @@ def set_realm_api(realm=None):
         Resolvers = resolvers.split(',')
     (added, failed) = set_realm(realm, Resolvers, priority=priority)
     g.audit_object.log({'success': len(added) == len(Resolvers),
-                        'info':  "realm: %r, resolvers: %r" % (realm,
+                        'info':  "realm: {0!r}, resolvers: {1!r}".format(realm,
                                                                resolvers)})
     return send_result({"added": added,
                         "failed": failed})
 
 
-@log_with(log)
 @realm_blueprint.route('/', methods=['GET'])
+@log_with(log)
 def get_realms_api():
     """
     This call returns the list of all defined realms.
@@ -206,8 +206,8 @@ def get_realms_api():
     return send_result(realms)
 
 
-@log_with(log)
 @realm_blueprint.route('/superuser', methods=['GET'])
+@log_with(log)
 def get_super_user_realms():
     """
     This call returns the list of all superuser realms
@@ -249,8 +249,8 @@ def get_super_user_realms():
     return send_result(superuser_realms)
 
 
-@log_with(log)
 @defaultrealm_blueprint.route('/<realm>', methods=['POST'])
+@log_with(log)
 @prepolicy(check_base_action, request, ACTION.RESOLVERWRITE)
 def set_default_realm_api(realm=None):
     """
@@ -267,8 +267,8 @@ def set_default_realm_api(realm=None):
     return send_result(r)
 
 
-@log_with(log)
 @defaultrealm_blueprint.route('', methods=['DELETE'])
+@log_with(log)
 @prepolicy(check_base_action, request, ACTION.RESOLVERDELETE)
 def delete_default_realm_api(realm=None):
     """
@@ -296,8 +296,8 @@ def delete_default_realm_api(realm=None):
     return send_result(r)
 
 
-@log_with(log)
 @defaultrealm_blueprint.route('', methods=['GET'])
+@log_with(log)
 def get_default_realm_api():
     """
     This call returns the default realm
@@ -339,9 +339,9 @@ def get_default_realm_api():
     return send_result(res)
 
 
+@realm_blueprint.route('/<realm>', methods=['DELETE'])
 @log_with(log)
 #@system_blueprint.route('/delRealm', methods=['POST', 'DELETE'])
-@realm_blueprint.route('/<realm>', methods=['DELETE'])
 @prepolicy(check_base_action, request, ACTION.RESOLVERDELETE)
 def delete_realm_api(realm=None):
     """

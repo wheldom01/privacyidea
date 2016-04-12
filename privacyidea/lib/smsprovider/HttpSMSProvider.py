@@ -3,6 +3,8 @@
 #    E-mail: info@privacyidea.org
 #    Contact: www.privacyidea.org
 #
+#    2016-04-08 Cornelius Kölbel <cornelius@privacyidea.org>
+#               Remote "None" as redundant 2nd argument to get
 #    2016-01-13 Cornelius Kölbel <cornelius@privacyidea.org>
 #               omit data object in GET request
 #               omit params in POST request
@@ -54,16 +56,16 @@ class HttpSMSProvider(ISMSProvider):
         :return:
         """
         success = False
-        url = self.config.get('URL', None)
+        url = self.config.get('URL')
         if url is None:
             log.warning("can not submit message. URL is missing.")
             raise SMSError(-1, "No URL specified in the provider config.")
 
-        log.debug("submitting message %s to %s" % (message, phone))
+        log.debug("submitting message {0!s} to {1!s}".format(message, phone))
 
         method = self.config.get('HTTP_Method', 'GET')
-        username = self.config.get('USERNAME', None)
-        password = self.config.get('PASSWORD', None)
+        username = self.config.get('USERNAME')
+        password = self.config.get('PASSWORD')
         ssl_verify = self.config.get('CHECK_SSL', True)
         parameter = self._get_parameters(message, phone)
         basic_auth = None
@@ -79,7 +81,7 @@ class HttpSMSProvider(ISMSProvider):
         if username and password is not None:
             basic_auth = (username, password)
 
-        proxy = self.config.get('PROXY', None)
+        proxy = self.config.get('PROXY')
         proxies = None
         if proxy:
             protocol = proxy.split(":")[0]
@@ -102,8 +104,8 @@ class HttpSMSProvider(ISMSProvider):
                       verify=ssl_verify,
                       auth=basic_auth,
                       proxies=proxies)
-        log.debug("queued SMS on the HTTP gateway. status code returned: %s" %
-                  r.status_code)
+        log.debug("queued SMS on the HTTP gateway. status code returned: {0!s}".format(
+                  r.status_code))
 
         # We assume, that all gateway return with HTTP Status Code 200
         if r.status_code != 200:
@@ -123,7 +125,7 @@ class HttpSMSProvider(ISMSProvider):
         urldata[messageKey] = message
         params = self.config.get('PARAMETER', {})
         urldata.update(params)
-        log.debug("[getParameters] urldata: %s" % urldata)
+        log.debug("[getParameters] urldata: {0!s}".format(urldata))
         return urldata
 
     def _check_success(self, response):

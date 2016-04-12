@@ -5,7 +5,9 @@ This test file tests the lib.tokens.yubikeytoken
 PWFILE = "tests/testdata/passwords"
 
 from .base import MyTestCase
-from privacyidea.lib.tokens.yubikeytoken import (YubikeyTokenClass)
+from privacyidea.lib.tokens.yubikeytoken import (YubikeyTokenClass,
+                                                 yubico_api_signature,
+                                                 yubico_check_api_signature)
 from privacyidea.lib.token import init_token
 from privacyidea.models import (Token)
 from flask import Request, g
@@ -149,11 +151,17 @@ class YubikeyTokenTestCase(MyTestCase):
 
     def test_09_api_signature(self):
         api_key = "LqeG/IZscF1f7/oGQBqNnGY7MLk="
+        signature = "0KRJecfPNSrpZ79+xODbJl0HM8I="
         data = {"otp": "ececegecejeeedehfftnecrrfcfibfbklhvetghgrvtjdtvv",
                 "nonce": "blablafoo",
+                "h": signature,
                 "timestamp": "time"}
-        h = YubikeyTokenClass._api_signature(data, api_key)
-        self.assertEqual(h, "InGUM9l0cgfOzEAb0C1LgMktycU=")
+
+        h = yubico_api_signature(data, api_key)
+        self.assertEqual(h, signature)
+        self.assertEqual(yubico_check_api_signature(data, api_key,
+                                                    signature), True)
+        self.assertEqual(yubico_check_api_signature(data, api_key), True)
 
     def test_10_api_endpoint(self):
         fixed = "ebedeeefegeheiej"
@@ -177,18 +185,19 @@ class YubikeyTokenTestCase(MyTestCase):
         env = builder.get_environ()
         # Set the remote address so that we can filter for it
         env["REMOTE_ADDR"] = "10.0.0.1"
+        g.client_ip = env["REMOTE_ADDR"]
         req = Request(env)
         nonce = "random nonce"
         apiid = "hallo"
         apikey = "1YMEbMZijD3DzL21UfKGnOOI13c="
-        set_privacyidea_config("yubikey.apiid.%s" % apiid, apikey)
+        set_privacyidea_config("yubikey.apiid.{0!s}".format(apiid), apikey)
         req.all_data = {'id': apiid,
                         "otp": otps[0],
                         "nonce": nonce}
         text_type, result = YubikeyTokenClass.api_endpoint(req, g)
         self.assertEqual(text_type, "plain")
         self.assertTrue("status=OK" in result, result)
-        self.assertTrue("nonce=%s" % nonce in result, result)
+        self.assertTrue("nonce={0!s}".format(nonce) in result, result)
 
     def test_98_wrong_tokenid(self):
         db_token = Token.query.filter(Token.serial == self.serial1).first()

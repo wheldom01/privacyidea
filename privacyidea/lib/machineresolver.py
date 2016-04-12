@@ -76,8 +76,7 @@ def save_resolver(params):
     # check the type
     (class_dict, type_dict) = get_machine_resolver_class_dict()
     if resolvertype not in type_dict.values():
-            raise Exception("machine resolver type : %s not in %s" %
-                            (resolvertype, type_dict.values()))
+            raise Exception("machine resolver type : {0!s} not in {1!s}".format(resolvertype, type_dict.values()))
 
     # check the name
     resolvers = get_resolver_list(filter_resolver_name=resolvername)
@@ -220,7 +219,7 @@ def get_resolver_class(resolver_type):
     if resolver_type in resolver_types.values():
         for k, v in resolver_types.items():
             if v == resolver_type:
-                ret = resolver_clazzes.get(k, None)
+                ret = resolver_clazzes.get(k)
                 break
     return ret
 
@@ -259,8 +258,8 @@ def get_resolver_object(resolvername):
         if r_obj_class is None:  # pragma: no cover
             # This can only happen if a resolver class definition would be
             # removed.
-            log.error("unknown resolver class for type %s " %
-                      resolver.get("type"))
+            log.error("unknown resolver class for type {0!s} ".format(
+                      resolver.get("type")))
         else:
             # create the resolver instance and load the config
             r_obj = r_obj_class(resolvername, resolver.get("data"))

@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 #
+#  2016-04-08 Cornelius Kölbel <cornelius.koelbel@netknights.it>
+#             Avoid "None" as redundant 2nd argument
 #  2015-12-28 Cornelius Kölbel <cornelius.koelbel@netknights.it>
 #             Add ACTION.REQUIREDEMAIL
 #  2015-12-12 Cornelius Kölbel <cornelius.koelbel@netknights.it>
@@ -115,22 +117,22 @@ def init_random_pin(request=None, action=None):
                                                scope=SCOPE.ENROLL,
                                                user=user_object.login,
                                                realm=user_object.realm,
-                                               client=request.remote_addr,
+                                               client=g.client_ip,
                                                unique=True)
 
     if len(pin_pols) == 1:
-        log.debug("Creating random OTP PIN with length %s" % pin_pols[0])
+        log.debug("Creating random OTP PIN with length {0!s}".format(pin_pols[0]))
         request.all_data["pin"] = generate_password(size=int(pin_pols[0]))
 
         # handle the PIN
         handle_pols = policy_object.get_action_values(
             action=ACTION.PINHANDLING, scope=SCOPE.ENROLL,
             user=user_object.login, realm=user_object.realm,
-            client=request.remote_addr)
+            client=g.client_ip)
         # We can have more than one pin handler policy. So we can process the
         #  PIN in several ways!
         for handle_pol in handle_pols:
-            log.debug("Handle the random PIN with the class %s" % handle_pol)
+            log.debug("Handle the random PIN with the class {0!s}".format(handle_pol))
             packageName = ".".join(handle_pol.split(".")[:-1])
             className = handle_pol.split(".")[-1:][0]
             mod = __import__(packageName, globals(), locals(), [className])
@@ -167,9 +169,9 @@ def check_otp_pin(request=None, action=None):
             # if this is a token, that does not use a pin, we ignore this check
             # And immediately return true
             tokensobject_list = get_tokens(serial=serial)
-            if len(tokensobject_list) == 1:
-                if tokensobject_list[0].using_pin is False:
-                    return True
+            if (len(tokensobject_list) == 1 and
+                    tokensobject_list[0].using_pin is False):
+                return True
         policy_object = g.policy_object
         user_object = get_user_from_param(params)
         # get the policies for minimum length, maximum length and PIN contents
@@ -177,30 +179,30 @@ def check_otp_pin(request=None, action=None):
                                                      scope=SCOPE.USER,
                                                      user=user_object.login,
                                                      realm=user_object.realm,
-                                                     client=request.remote_addr,
+                                                     client=g.client_ip,
                                                      unique=True)
         pol_maxlen = policy_object.get_action_values(action=ACTION.OTPPINMAXLEN,
                                                      scope=SCOPE.USER,
                                                      user=user_object.login,
                                                      realm=user_object.realm,
-                                                     client=request.remote_addr,
+                                                     client=g.client_ip,
                                                      unique=True)
         pol_contents = policy_object.get_action_values(action=ACTION.OTPPINCONTENTS,
                                                        scope=SCOPE.USER,
                                                        user=user_object.login,
                                                        realm=user_object.realm,
-                                                       client=request.remote_addr,
+                                                       client=g.client_ip,
                                                        unique=True)
 
         if len(pol_minlen) == 1 and len(pin) < int(pol_minlen[0]):
             # check the minimum length requirement
-            raise PolicyError("The minimum OTP PIN length is %s" %
-                              pol_minlen[0])
+            raise PolicyError("The minimum OTP PIN length is {0!s}".format(
+                              pol_minlen[0]))
 
         if len(pol_maxlen) == 1 and len(pin) > int(pol_maxlen[0]):
             # check the maximum length requirement
-            raise PolicyError("The maximum OTP PIN length is %s" %
-                              pol_minlen[0])
+            raise PolicyError("The maximum OTP PIN length is {0!s}".format(
+                              pol_minlen[0]))
 
         if len(pol_contents) == 1:
             # check the contents requirement
@@ -218,11 +220,11 @@ def check_otp_pin(request=None, action=None):
                 pol_contents = pol_contents[1:]
             #  TODO implement grouping and substraction
             if "c" in pol_contents[0] and not re.search(chars, pin):
-                raise PolicyError("Missing character in PIN: %s" % chars)
+                raise PolicyError("Missing character in PIN: {0!s}".format(chars))
             if "n" in pol_contents[0] and not re.search(digits, pin):
-                raise PolicyError("Missing character in PIN: %s" % digits)
+                raise PolicyError("Missing character in PIN: {0!s}".format(digits))
             if "s" in pol_contents[0] and not re.search(special, pin):
-                raise PolicyError("Missing character in PIN: %s" % special)
+                raise PolicyError("Missing character in PIN: {0!s}".format(special))
 
     return True
 
@@ -245,7 +247,7 @@ def encrypt_pin(request=None, action=None):
                                           scope=SCOPE.ENROLL,
                                           user=user_object.login,
                                           realm=user_object.realm,
-                                          client=request.remote_addr,
+                                          client=g.client_ip,
                                           active=True)
 
     if pin_pols:
@@ -279,7 +281,7 @@ def init_tokenlabel(request=None, action=None):
                                                  scope=SCOPE.ENROLL,
                                                  user=user_object.login,
                                                  realm=user_object.realm,
-                                                 client=request.remote_addr,
+                                                 client=g.client_ip,
                                                  unique=True)
 
     if len(label_pols) == 1:
@@ -290,7 +292,7 @@ def init_tokenlabel(request=None, action=None):
                                                   scope=SCOPE.ENROLL,
                                                   user=user_object.login,
                                                   realm=user_object.realm,
-                                                  client=request.remote_addr,
+                                                  client=g.client_ip,
                                                   unique=True)
     if len(issuer_pols) == 1:
         request.all_data["tokenissuer"] = issuer_pols[0]
@@ -321,7 +323,7 @@ def check_max_token_user(request=None, action=None):
                                                      scope=SCOPE.ENROLL,
                                                      realm=user_object.realm,
                                                      user=user_object.login,
-                                                     client=request.remote_addr)
+                                                     client=g.client_ip)
         if limit_list:
             # we need to check how many tokens the user already has assigned!
             tokenobject_list = get_tokens(user=user_object)
@@ -361,7 +363,7 @@ def check_max_token_realm(request=None, action=None):
         limit_list = policy_object.get_action_values(ACTION.MAXTOKENREALM,
                                                      scope=SCOPE.ENROLL,
                                                      realm=realm,
-                                                     client=request.remote_addr)
+                                                     client=g.client_ip)
         if limit_list:
             # we need to check how many tokens the user already has assigned!
             tokenobject_list = get_tokens(realm=realm)
@@ -403,7 +405,7 @@ def set_realm(request=None, action=None):
     new_realm = policy_object.get_action_values(ACTION.SETREALM,
                                                 scope=SCOPE.AUTHZ,
                                                 realm=realm,
-                                                client=request.remote_addr)
+                                                client=g.client_ip)
     if len(new_realm) > 1:
         raise PolicyError("I do not know, to which realm I should set the "
                           "new realm. Conflicting policies exist.")
@@ -432,7 +434,7 @@ def required_email(request=None, action=None):
     email_found = False
     email_pols = g.policy_object.\
         get_action_values(ACTION.REQUIREDEMAIL, scope=SCOPE.REGISTER,
-                          client=request.remote_addr)
+                          client=g.client_ip)
     if email and email_pols:
         for email_pol in email_pols:
             # The policy is only "/regularexpr/".
@@ -471,7 +473,7 @@ def mangle(request=None, action=None):
                                                   scope=SCOPE.AUTH,
                                                   realm=user_object.realm,
                                                   user=user_object.login,
-                                                  client=request.remote_addr)
+                                                  client=g.client_ip)
     # We can have several mangle policies! One for user, one for realm and
     # one for pass. So we do no checking here.
     for mangle_pol_action in mangle_pols:
@@ -481,7 +483,7 @@ def mangle(request=None, action=None):
         mangle_key, search, replace, _rest = mangle_pol_action.split("/", 3)
         mangle_value = request.all_data.get(mangle_key)
         if mangle_value:
-            log.debug("mangling authentication data: %s" % mangle_key)
+            log.debug("mangling authentication data: {0!s}".format(mangle_key))
             request.all_data[mangle_key] = re.sub(search, replace,
                                                   mangle_value)
     return True
@@ -511,11 +513,12 @@ def check_anonymous_user(request=None, action=None):
                                         user=username,
                                         realm=realm,
                                         scope=scope,
-                                        client=request.remote_addr,
+                                        client=g.client_ip,
                                         adminrealm=None,
                                         active=True)
     action_at_all = policy_object.get_policies(scope=scope,
-                                               active=True)
+                                               active=True,
+                                               all_times=True)
     if action_at_all and len(action) == 0:
         raise PolicyError(ERROR)
     return True
@@ -561,11 +564,12 @@ def check_base_action(request=None, action=None, anonymous=False):
                                         user=username,
                                         realm=realm,
                                         scope=scope,
-                                        client=request.remote_addr,
+                                        client=g.client_ip,
                                         adminrealm=admin_realm,
                                         active=True)
     action_at_all = policy_object.get_policies(scope=scope,
-                                               active=True)
+                                               active=True,
+                                               all_times=True)
     if action_at_all and len(action) == 0:
         raise PolicyError(ERROR.get(role))
     return True
@@ -587,10 +591,11 @@ def check_token_upload(request=None, action=None):
                                         user=username,
                                         realm=params.get("realm"),
                                         scope=SCOPE.ADMIN,
-                                        client=request.remote_addr,
+                                        client=g.client_ip,
                                         adminrealm=admin_realm,
                                         active=True)
-    action_at_all = policy_object.get_policies(scope=SCOPE.ADMIN, active=True)
+    action_at_all = policy_object.get_policies(scope=SCOPE.ADMIN,
+                                               active=True, all_times=True)
     if action_at_all and len(action) == 0:
         raise PolicyError("Admin actions are defined, but you are not allowed"
                           " to upload token files.")
@@ -620,15 +625,16 @@ def check_token_init(request=None, action=None):
         scope = SCOPE.USER
         admin_realm = None
     tokentype = params.get("type", "HOTP")
-    action = "enroll%s" % tokentype.upper()
+    action = "enroll{0!s}".format(tokentype.upper())
     action = policy_object.get_policies(action=action,
                                         user=username,
                                         realm=params.get("realm"),
                                         scope=scope,
-                                        client=request.remote_addr,
+                                        client=g.client_ip,
                                         adminrealm=admin_realm,
                                         active=True)
-    action_at_all = policy_object.get_policies(scope=scope, active=True)
+    action_at_all = policy_object.get_policies(scope=scope, active=True,
+                                               all_times=True)
     if action_at_all and len(action) == 0:
         raise PolicyError(ERROR.get(role))
     return True
@@ -654,7 +660,7 @@ def check_external(request=None, action="init"):
             module = importlib.import_module(module_name)
             function_name = module_func.split(".")[-1]
     except Exception as exx:
-        log.error("Error importing external check function: %s" % exx)
+        log.error("Error importing external check function: {0!s}".format(exx))
 
     # Import of function was successful
     if function_name:
@@ -681,15 +687,15 @@ def api_key_required(request=None, action=None):
                                         user=user_object.login,
                                         realm=user_object.realm,
                                         scope=SCOPE.AUTHZ,
-                                        client=request.remote_addr,
+                                        client=g.client_ip,
                                         active=True)
     # Do we have a policy?
     if action:
         # check if we were passed a correct JWT
         # Get the Authorization token from the header
-        auth_token = request.headers.get('PI-Authorization', None)
+        auth_token = request.headers.get('PI-Authorization')
         if not auth_token:
-            auth_token = request.headers.get('Authorization', None)
+            auth_token = request.headers.get('Authorization')
         try:
             r = jwt.decode(auth_token, current_app.secret_key)
             g.logged_in_user = {"username": r.get("username", ""),
@@ -739,14 +745,15 @@ def is_remote_user_allowed(req):
         realm = realm or get_default_realm()
 
         # Check if the remote user is allowed
-        client_ip = req.remote_addr
+        if "client_ip" not in g:
+            g.client_ip = req.remote_user
         if "policy_object" not in g:
             g.policy_object = PolicyClass()
         ruser_active = g.policy_object.get_action_values(ACTION.REMOTE_USER,
                                                          scope=SCOPE.WEBUI,
                                                          user=loginname,
                                                          realm=realm,
-                                                         client=client_ip)
+                                                         client=g.client_ip)
 
         res = ruser_active
 

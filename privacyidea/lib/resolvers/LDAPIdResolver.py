@@ -91,6 +91,8 @@ class AUTHTYPE(object):
 
 class IdResolver (UserIdResolver):
 
+    updateable = True
+
     def __init__(self):
         self.i_am_bound = False
         self.uri = ""
@@ -126,7 +128,7 @@ class IdResolver (UserIdResolver):
             # In fact we need the sAMAccountName. If the username mapping is
             # another attribute than the sAMAccountName the authentication
             # will fail!
-            bind_user = "%s\%s" % (domain_name, uinfo.get("username"))
+            bind_user = "{0!s}\{1!s}".format(domain_name, uinfo.get("username"))
         else:
             bind_user = self._getDN(uid)
 
@@ -134,8 +136,8 @@ class IdResolver (UserIdResolver):
         password = to_utf8(password)
 
         try:
-            log.debug("Authtype: %s" % self.authtype)
-            log.debug("user    : %s" % bind_user)
+            log.debug("Authtype: {0!s}".format(self.authtype))
+            log.debug("user    : {0!s}".format(bind_user))
             # Whatever happens. If we have an empty bind_user, we must break
             # since we must avoid anonymous binds!
             if not bind_user or len(bind_user) < 1:
@@ -147,15 +149,14 @@ class IdResolver (UserIdResolver):
                                        auto_referrals=not self.noreferrals)
             l.open()
             r = l.bind()
-            log.debug("bind result: %s" % r)
+            log.debug("bind result: {0!s}".format(r))
             if not r:
                 raise Exception("Wrong credentials")
             log.debug("bind seems successful.")
             l.unbind()
             log.debug("unbind successful.")
         except Exception as e:
-            log.warning("failed to check password for %r/%r: %r"
-                        % (uid, bind_user, e))
+            log.warning("failed to check password for {0!r}/{1!r}: {2!r}".format(uid, bind_user, e))
             return False
         
         return True
@@ -233,12 +234,11 @@ class IdResolver (UserIdResolver):
             dn = userId
         else:
             if self.uidtype == "objectGUID":
-                userId = uuid.UUID("{%s}" % userId).bytes_le
+                userId = uuid.UUID("{{{0!s}}}".format(userId)).bytes_le
                 userId = escape_bytes(userId)
             # get the DN for the Object
             self._bind()
-            filter = "(&%s(%s=%s))" % \
-                (self.searchfilter, self.uidtype, userId)
+            filter = "(&{0!s}({1!s}={2!s}))".format(self.searchfilter, self.uidtype, userId)
             self.l.search(search_base=self.basedn,
                           search_scope=self.scope,
                           search_filter=filter,
@@ -246,8 +246,7 @@ class IdResolver (UserIdResolver):
             r = self.l.response
             r = self._trim_result(r)
             if len(r) > 1:  # pragma: no cover
-                raise Exception("Found more than one object for uid %r"
-                                % userId)
+                raise Exception("Found more than one object for uid {0!r}".format(userId))
             if len(r) == 1:
                 dn = r[0].get("dn")
 
@@ -286,8 +285,10 @@ class IdResolver (UserIdResolver):
                           search_filter="(&" + self.searchfilter + ")",
                           attributes=self.userinfo.values())
         else:
-            filter = "(&%s(%s=%s))" %\
-                (self.searchfilter, self.uidtype, userId)
+            if self.uidtype == "objectGUID":
+                userId = uuid.UUID("{{{0!s}}}".format(userId)).bytes_le
+                userId = escape_bytes(userId)
+            filter = "(&{0!s}({1!s}={2!s}))".format(self.searchfilter, self.uidtype, userId)
             self.l.search(search_base=self.basedn,
                               search_scope=self.scope,
                               search_filter=filter,
@@ -296,7 +297,7 @@ class IdResolver (UserIdResolver):
         r = self.l.response
         r = self._trim_result(r)
         if len(r) > 1:  # pragma: no cover
-            raise Exception("Found more than one object for uid %r" % userId)
+            raise Exception("Found more than one object for uid {0!r}".format(userId))
 
         for entry in r:
             attributes = entry.get("attributes")
@@ -348,8 +349,7 @@ class IdResolver (UserIdResolver):
         """
         userid = ""
         self._bind()
-        filter = "(&%s(%s=%s))" % \
-            (self.searchfilter, self.loginname_attribute,
+        filter = "(&{0!s}({1!s}={2!s}))".format(self.searchfilter, self.loginname_attribute,
              self._escape_loginname(LoginName))
 
         # create search attributes
@@ -365,8 +365,8 @@ class IdResolver (UserIdResolver):
         r = self.l.response
         r = self._trim_result(r)
         if len(r) > 1:  # pragma: no cover
-            raise Exception("Found more than one object for Loginname %r" %
-                            LoginName)
+            raise Exception("Found more than one object for Loginname {0!r}".format(
+                            LoginName))
         
         for entry in r:
             userid = self._get_uid(entry, self.uidtype)
@@ -393,39 +393,35 @@ class IdResolver (UserIdResolver):
                 comperator = ">="
                 if searchDict[search_key] in ["1", 1]:
                     comperator = "<="
-                filter += "(|(%s%s%s)(%s!=0))" % (self.userinfo[search_key],
+                filter += "(|({0!s}{1!s}{2!s})({3!s}!=0))".format(self.userinfo[search_key],
                                                   comperator,
                                                   get_ad_timestamp_now(),
                                                   self.userinfo[search_key])
             else:
-                filter += "(%s=%s)" % \
-                    (self.userinfo[search_key], searchDict[search_key])
+                filter += "({0!s}={1!s})".format(self.userinfo[search_key], searchDict[search_key])
         filter += ")"
 
-        paged_search = True
-        paged_cookie = None
-        while paged_search:
-            self.l.search(search_base=self.basedn,
-                          search_scope=self.scope,
-                          search_filter=filter,
-                          attributes=attributes,
-                          paged_size=1000,
-                          size_limit=self.sizelimit,
-                          paged_cookie=paged_cookie)
-            # returns a list of dictionaries
-            for entry in self.l.response:
-                try:
-                    attributes = entry.get("attributes")
-                    user = self._ldap_attributes_to_user_object(attributes)
-                    user['userid'] = self._get_uid(entry, self.uidtype)
-                    ret.append(user)
-                except Exception as exx:  # pragma: no cover
-                    log.error("Error during fetching LDAP objects: %r" % exx)
-                    log.debug("%s" % traceback.format_exc())
-            paged_cookie = self.l.result.get('controls', {}).get(
-                '1.2.840.113556.1.4.319', {}).get('value', {}).get('cookie')
-            paged_search = bool(paged_cookie)
-        
+        g = self.l.extend.standard.paged_search(search_base=self.basedn,
+                                                search_filter=filter,
+                                                search_scope=self.scope,
+                                                attributes=attributes,
+                                                paged_size=100,
+                                                size_limit=self.sizelimit,
+                                                generator=True)
+        # returns a generator of dictionaries
+        for entry in g:
+            # Simple fix for ignored sizelimit with Active Directory
+            if len(ret) >= self.sizelimit:
+                break
+            try:
+                attributes = entry.get("attributes")
+                user = self._ldap_attributes_to_user_object(attributes)
+                user['userid'] = self._get_uid(entry, self.uidtype)
+                ret.append(user)
+            except Exception as exx:  # pragma: no cover
+                log.error("Error during fetching LDAP objects: {0!r}".format(exx))
+                log.debug("{0!s}".format(traceback.format_exc()))
+
         return ret
     
     def getResolverId(self):
@@ -554,7 +550,7 @@ class IdResolver (UserIdResolver):
                                   use_ssl=ssl,
                                   connect_timeout=float(timeout))
             server_pool.add(server)
-            log.debug("Added %s, %s, %s to server pool." % (host, port, ssl))
+            log.debug("Added {0!s}, {1!s}, {2!s} to server pool.".format(host, port, ssl))
         return server_pool
 
     @classmethod
@@ -614,10 +610,10 @@ class IdResolver (UserIdResolver):
                                              float(param.get("TIMEOUT", 5)))
             l = cls.create_connection(authtype=param.get("AUTHTYPE",
                                                           AUTHTYPE.SIMPLE),
-                                       server=server_pool,
-                                       user=param.get("BINDDN"),
-                                       password=to_utf8(param.get("BINDPW")),
-                                       auto_referrals=not param.get(
+                                      server=server_pool,
+                                      user=param.get("BINDDN"),
+                                      password=to_utf8(param.get("BINDPW")),
+                                      auto_referrals=not param.get(
                                            "NOREFERRALS"))
             l.open()
             #log.error("LDAP Server Pool States: %s" % server_pool.pool_states)
@@ -628,30 +624,33 @@ class IdResolver (UserIdResolver):
             if uidtype.lower() != "dn":
                 attributes.append(str(uidtype))
             # search for users...
-            l.search(search_base=param["LDAPBASE"],
-                     search_scope=param.get("SCOPE") or ldap3.SUBTREE,
-                     search_filter="(&" + param["LDAPSEARCHFILTER"] + ")",
-                     attributes=attributes)
-
-            r = l.response
-            count = len(r)
+            g = l.extend.standard.paged_search(
+                search_base=param["LDAPBASE"],
+                search_filter="(&" + param["LDAPSEARCHFILTER"] + ")",
+                search_scope=param.get("SCOPE") or ldap3.SUBTREE,
+                attributes=attributes,
+                paged_size=100,
+                generator=True)
+            # returns a generator of dictionaries
+            count = 0
             uidtype_count = 0
-            for entry in r:
+            for entry in g:
                 userid = cls._get_uid(entry, uidtype)
+                count += 1
                 if userid:
                     uidtype_count += 1
             if uidtype_count < count:  # pragma: no cover
                 desc = _("Your LDAP config found %i user objects, but only %i "
                          "with the specified uidtype" % (count, uidtype_count))
             else:
-                desc = _("Your LDAP config seems to be OK, %i user objects found.")\
-                    % count
-            
+                desc = _("Your LDAP config seems to be OK, %i user objects "
+                         "found.") % count
+
             l.unbind()
             success = True
             
         except Exception as e:
-            desc = "%r" % e
+            desc = "{0!r}".format(e)
         
         return success, desc
 
@@ -714,8 +713,6 @@ class IdResolver (UserIdResolver):
         takes the attributes and maps them to the LDAP attributes
         :param attributes: Attributes to be updated
         :type attributes: dict
-        :param uid: The uid of the user object in the resolver
-        :type uid: basestring
         :return: dict with attribute name as keys and values
         """
         ldap_attributes = {}
@@ -762,7 +759,8 @@ class IdResolver (UserIdResolver):
 
     def _create_ldap_modify_changes(self, attributes, uid):
         """
-        takes the attributes and maps them to the LDAP attributes
+        Identifies if an LDAP attribute already exists and if the value needs to be updated, deleted or added.
+
         :param attributes: Attributes to be updated
         :type attributes: dict
         :param uid: The uid of the user object in the resolver
@@ -770,10 +768,11 @@ class IdResolver (UserIdResolver):
         :return: dict with attribute name as keys and values
         """
         modify_changes = {}
+        uinfo = self.getUserInfo(uid)
 
         for fieldname, value in attributes.iteritems():
             if value:
-                if fieldname in self.getUserInfo(uid):
+                if fieldname in uinfo:
                     modify_changes[fieldname] = [MODIFY_REPLACE, [value]]
                 else:
                     modify_changes[fieldname] = [MODIFY_ADD, [value]]
@@ -804,14 +803,14 @@ class IdResolver (UserIdResolver):
 
             mapped = self._create_ldap_modify_changes(attributes, uid)
             params = self._attributes_to_ldap_attributes(mapped)
-            self.l.modify(uid, params)
+            self.l.modify(self._getDN(uid), params)
         except Exception as e:
-            log.error("Error accessing LDAP server: %s" % e)
-            log.debug("%s" % traceback.format_exc())
+            log.error("Error accessing LDAP server: {0!s}".format(e))
+            log.debug("{0!s}".format(traceback.format_exc()))
             return False
 
         if self.l.result.get('result') != 0:
-            log.error("Error during update of user: %s details" % uid)
+            log.error("Error during update of user {0!s}: {1!s}".format(uid, self.l.result.get("message")))
             return False
 
         return True
@@ -862,6 +861,6 @@ class IdResolver (UserIdResolver):
                                  check_names=check_names,
                                  auto_referrals=auto_referrals)
         else:
-            raise Exception("Authtype %s not supported" % authtype)
+            raise Exception("Authtype {0!s} not supported".format(authtype))
 
         return l

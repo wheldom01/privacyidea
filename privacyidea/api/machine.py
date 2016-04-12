@@ -25,13 +25,12 @@ __doc__ = """This REST API is used to list machines from Machine Resolvers.
 The code is tested in tests/test_api_machines
 """
 from flask import (Blueprint,
-                   request)
+                   request, g)
 from lib.utils import (getParam,
                        send_result)
 from ..api.lib.prepolicy import prepolicy, check_base_action, mangle
 from ..lib.policy import ACTION
 
-from flask import (g)
 from ..lib.machine import (get_machines, attach_token, detach_token,
                            add_option, delete_option,
                            list_token_machines, list_machine_tokens,
@@ -118,7 +117,7 @@ def list_machines_api():
     # so we need to convert the Machine Object to dict
     machines = [mobject.get_dict() for mobject in machines]
     g.audit_object.log({'success': True,
-                        'info': "hostname: %s, ip: %s" % (hostname, ip)})
+                        'info': "hostname: {0!s}, ip: {1!s}".format(hostname, ip)})
     
     return send_result(machines)
 
@@ -174,7 +173,7 @@ def attach_token_api():
                              options=options)
 
     g.audit_object.log({'success': True,
-                        'info': "serial: %s, application: %s" % (serial,
+                        'info': "serial: {0!s}, application: {1!s}".format(serial,
                                                                  application)})
 
     return send_result(mt_object.id)
@@ -212,7 +211,7 @@ def detach_token_api(serial, machineid, resolver, application):
                      machine_id=machineid, resolver_name=resolver)
 
     g.audit_object.log({'success': True,
-                        'info': "serial: %s, application: %s" % (serial,
+                        'info': "serial: {0!s}, application: {1!s}".format(serial,
                                                                  application)})
 
     return send_result(r)
@@ -250,7 +249,7 @@ def list_machinetokens_api():
                                   resolver_name=resolver)
 
     g.audit_object.log({'success': True,
-                        'info': "serial: %s, hostname: %s" % (serial,
+                        'info': "serial: {0!s}, hostname: {1!s}".format(serial,
                                                               hostname)})
     return send_result(res)
 
@@ -303,7 +302,7 @@ def set_option_api():
                       key=k)
 
     g.audit_object.log({'success': True,
-                        'info': "serial: %s, application: %s" % (serial,
+                        'info': "serial: {0!s}, application: {1!s}".format(serial,
                                                                  application)})
 
     return send_result({"added": o_add, "deleted": o_del})
@@ -362,11 +361,11 @@ def get_auth_items_api(application=None):
         if key in filter_param:
             del(filter_param[key])
 
-    ret = get_auth_items(hostname, ip=request.remote_addr,
+    ret = get_auth_items(hostname, ip=g.client_ip,
                          application=application, challenge=challenge,
                          filter_param=filter_param)
     g.audit_object.log({'success': True,
-                        'info': "host: %s, application: %s" % (hostname,
+                        'info': "host: {0!s}, application: {1!s}".format(hostname,
                                                                application)})
     return send_result(ret)
 

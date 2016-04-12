@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 #
+#  2016-04-06 Cornelius Kölbel <cornelius.koelbel@netknights.it>
+#             Add time dependency in policy
 #  2016-02-22 Cornelius Kölbel <cornelius.koelbel@netknights.it>
 #             Add RADIUS passthru policy
 #  2016-02-05 Cornelius Kölbel <cornelius.koelbel@netknights.it>
@@ -111,6 +113,18 @@ You can exclude clients from subnets by prepending the client with a '-' or
 a '!'.
 ``172.16.0.0/24, -172.16.0.17`` will match each client in the subnet except
 the 172.16.0.17.
+
+time
+----
+You can specify a time in which the policy should be active.
+Time formats are
+
+<dow>-<dow>:<hh>:<mm>-<hh>:<mm>, ...
+<dow>:<hh>:<mm>-<hh>:<mm>
+<dow>:<hh>-<hh>
+
+and any combination of it. "dow" being day of week Mon, Tue, Wed, Thu, Fri,
+Sat, Sun.
 """
 
 from .log import log_with
@@ -128,6 +142,7 @@ from privacyidea.lib.realm import get_realms
 from privacyidea.lib.resolver import get_resolver_list
 from privacyidea.lib.smtpserver import get_smtpservers
 from privacyidea.lib.radiusserver import get_radiusservers
+from privacyidea.lib.utils import check_time_in_range
 log = logging.getLogger(__name__)
 
 optional = True
@@ -288,7 +303,7 @@ class PolicyClass(object):
 
     def get_policies(self, name=None, scope=None, realm=None, active=None,
                      resolver=None, user=None, client=None, action=None,
-                     adminrealm=None):
+                     adminrealm=None, time=None, all_times=False):
         """
         Return the policies of the given filter values
 
@@ -302,10 +317,26 @@ class PolicyClass(object):
         :param action:
         :param adminrealm: This is the realm of the admin. This is only
             evaluated in the scope admin.
+        :param time: The optional time, for which the policies should be
+            fetched. The default time is now()
+        :type time: datetime
+        :param all_times: If True the time restriction of the policies is
+            ignored. Policies of all time ranges will be returned.
+        :type all_times: bool
         :return: list of policies
         :rtype: list of dicts
         """
         reduced_policies = self.policies
+
+        # filter policy for time. If no time is set or is a time is set and
+        # it matches the time_range, then we add this policy
+        if not all_times:
+            new_policies = []
+            for policy in reduced_policies:
+                if (policy.get("time") and check_time_in_range(policy.get(
+                        "time"), time)) or not policy.get("time"):
+                    new_policies.append(policy)
+            reduced_policies = new_policies
 
         # Do exact matches for "name", "active" and "scope", as these fields
         # can only contain one entry
@@ -476,7 +507,7 @@ class PolicyClass(object):
             rights = get_static_policy_definitions(scope).keys()
         # reduce the list
         rights = list(set(rights))
-        log.debug("returning the admin rights: %s" % rights)
+        log.debug("returning the admin rights: {0!s}".format(rights))
         return rights
 
     def ui_get_enroll_tokentypes(self, client, logged_in_user):
@@ -569,7 +600,7 @@ def set_policy(name=None, scope=None, action=None, realm=None, resolver=None,
         for k, v in action.items():
             if v is not True:
                 # value key
-                action_list.append("%s=%s" % (k, v))
+                action_list.append("{0!s}={1!s}".format(k, v))
             else:
                 # simple boolean value
                 action_list.append(k)
@@ -600,7 +631,7 @@ def enable_policy(name, enable=True):
     :return: ID of the policy
     """
     if not Policy.query.filter(Policy.name == name).first():
-        raise ParameterError("The policy with name '%s' does not exist" % name)
+        raise ParameterError("The policy with name '{0!s}' does not exist".format(name))
 
     # Update the policy
     p = set_policy(name=name, active=enable)
@@ -635,9 +666,9 @@ def export_policies(policies):
     file_contents = ""
     if policies:
         for policy in policies:
-            file_contents += "[%s]\n" % policy.get("name")
+            file_contents += "[{0!s}]\n".format(policy.get("name"))
             for key, value in policy.items():
-                file_contents += "%s = %s\n" % (key, value)
+                file_contents += "{0!s} = {1!s}\n".format(key, value)
             file_contents += "\n"
 
     return file_contents
@@ -670,7 +701,7 @@ def import_policies(file_contents):
                          time=policy.get("time", "")
                          )
         if ret > 0:
-            log.debug("import policy %s: %s" % (policy_name, ret))
+            log.debug("import policy {0!s}: {1!s}".format(policy_name, ret))
             res += 1
     return res
 
@@ -693,7 +724,7 @@ def get_static_policy_definitions(scope=None):
     smtpconfigs = [server.config.identifier for server in get_smtpservers()]
     radiusconfigs = [radius.config.identifier for radius in
                      get_radiusservers()]
-    radiusconfigs = ["userstore"] + radiusconfigs
+    radiusconfigs.insert(0, "userstore")
     pol = {
         SCOPE.REGISTER: {
             ACTION.RESOLVER: {'type': 'str',
@@ -971,6 +1002,9 @@ def get_static_policy_definitions(scope=None):
             ACTION.AUDIT: {
                 'type': 'bool',
                 'desc': _('Allow the user to view his own token history.')},
+            ACTION.USERLIST: {'type': 'bool',
+                                'desc': _("The user is allowed to view his "
+                                          "own user information.")},
             ACTION.UPDATEUSER: {'type': 'bool',
                                 'desc': _("The user is allowed to update his "
                                           "own user information, like changing "

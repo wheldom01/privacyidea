@@ -231,8 +231,8 @@ class QuestionnaireTokenClass(TokenClass):
         if answer == given_answer:
             res = 1
         else:
-            log.debug("The answer for token %s does not match." %
-                      self.get_serial())
+            log.debug("The answer for token {0!s} does not match.".format(
+                      self.get_serial()))
         return res
 
     @check_token_locked
@@ -257,7 +257,7 @@ class QuestionnaireTokenClass(TokenClass):
         otp_counter = -1
 
         # fetch the transaction_id
-        transaction_id = options.get('transaction_id', None)
+        transaction_id = options.get('transaction_id')
         if transaction_id is None:
             transaction_id = options.get('state')
 

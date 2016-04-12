@@ -70,7 +70,7 @@ myApp.controller("policyDetailsController", function($scope, $stateParams,
     $scope.scopes = [];
     $scope.viewPolicyTemplates = false;
 
-    check_all_loaded = function() {
+    var check_all_loaded = function() {
         if ($scope.resolversLoaded &&
             $scope.adminRealmsLoaded &&
             $scope.realmsLoaded &&
@@ -168,7 +168,8 @@ myApp.controller("policyDetailsController", function($scope, $stateParams,
             resolver: "",
             user: "",
             active: true,
-            client: ""
+            client: "",
+            time: ""
         };
     $scope.existingPolicyname = $stateParams.policyname;
     if ($scope.existingPolicyname) {
@@ -304,7 +305,9 @@ myApp.controller("policyDetailsController", function($scope, $stateParams,
                 // Return to the policy list
                 $scope.getPolicies();
                 $state.go("config.policies.list");
-            });
+        });
+        // Jump to top when the policy is saved
+        $('html,body').scrollTop(0);
     };
 
     $scope.presetEditValues2 = function(policy) {
@@ -313,6 +316,7 @@ myApp.controller("policyDetailsController", function($scope, $stateParams,
             $scope.params.user = policy.user;
             $scope.params.active = policy.active;
             $scope.params.client = policy.client;
+            $scope.params.time = policy.time;
             // tick the realms and the resolvers
             angular.forEach($scope.realms, function (value, key) {
                 if (policy.realm.indexOf(value.name) > -1) {
@@ -400,7 +404,7 @@ myApp.controller("tokenConfigController", function ($scope, $location,
             $scope.form['remote.verify_ssl_certificate'] = $scope.isChecked($scope.form['remote.verify_ssl_certificate']);
             angular.forEach($scope.form, function(value, key){
                 if (key.indexOf('question.question.') === 0) {
-                    counter = key.split('.')[2];
+                    var counter = key.split('.')[2];
                     if (counter >= $scope.nextQuestion) {
                         $scope.nextQuestion += 1;
                     }

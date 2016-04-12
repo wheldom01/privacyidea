@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
 #
+#  2016-04-08 Cornelius Kölbel <cornelius@privacyidea.org>
+#             Avoid consecutive if statements
+#
 #  privacyIDEA is a fork of LinOTP
 #  May 08, 2014 Cornelius Kölbel
 #  License:  AGPLv3
@@ -55,6 +58,7 @@ import sys
 import traceback
 
 
+FAILED_TO_DECRYPT_PASSWORD = "FAILED TO DECRYPT PASSWORD!"
 
 (ma, mi, _, _, _,) = sys.version_info
 pver = float(int(ma) + int(mi) * 0.1)
@@ -149,10 +153,9 @@ class SecretObj(object):
             del akey
 
     def _clearKey_(self, preserve=False):
-        if preserve is False:
-            if self.bkey is not None:
-                zerome(self.bkey)
-                del self.bkey
+        if preserve is False and self.bkey is not None:
+            zerome(self.bkey)
+            del self.bkey
 
     # This is used to remove the encryption key from the memory, but
     # this could also disturb the garbage collector and lead to memory eat ups.
@@ -324,7 +327,7 @@ def decryptPassword(cryptPass):
         ret = hsm.decrypt_password(cryptPass)
     except Exception as exx:  # pragma: no cover
         log.warning(exx)
-        ret = "FAILED TO DECRYPT PASSWORD!"
+        ret = FAILED_TO_DECRYPT_PASSWORD
     return ret
 
 
@@ -543,7 +546,7 @@ def get_rand_digit_str(length=16):
         raise ValueError("get_rand_digit_str only works for values > 1")
     clen = int(length / 2.4 + 0.5)
     randd = geturandom(clen)
-    s = "%d" % (int(randd.encode('hex'), 16))
+    s = "{0:d}".format((int(randd.encode('hex'), 16)))
     if len(s) < length:
         s = "0" * (length - len(s)) + s
     elif len(s) > length:
@@ -603,7 +606,7 @@ class Sign(object):
             self.private = f.read()
             f.close()
         except Exception as e:
-            log.error("Error reading private key %s: (%r)" % (private_file, e))
+            log.error("Error reading private key {0!s}: ({1!r})".format(private_file, e))
             raise e
 
         try:
@@ -611,7 +614,7 @@ class Sign(object):
             self.public = f.read()
             f.close()
         except Exception as e:
-            log.error("Error reading public key %s: (%r)" % (public_file, e))
+            log.error("Error reading public key {0!s}: ({1!r})".format(public_file, e))
             raise e
 
     def sign(self, s):
@@ -646,6 +649,6 @@ class Sign(object):
                 hashvalue = HashFunc.new(s)
                 pkcs1_15.new(RSAkey).verify(hashvalue, signature)
         except Exception:  # pragma: no cover
-            log.error("Failed to verify signature: %r" % s)
-            log.debug("%s" % traceback.format_exc())
+            log.error("Failed to verify signature: {0!r}".format(s))
+            log.debug("{0!s}".format(traceback.format_exc()))
         return r

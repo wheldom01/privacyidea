@@ -1,4 +1,27 @@
-from .log import log_with
+# -*- coding: utf-8 -*-
+#
+#  2015-04-05 Cornelius Kölbel <cornelius@privacyidea.org>
+#             Added time test function
+#
+# This code is free software; you can redistribute it and/or
+# modify it under the terms of the GNU AFFERO GENERAL PUBLIC LICENSE
+# License as published by the Free Software Foundation; either
+# version 3 of the License, or any later version.
+#
+# This code is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU AFFERO GENERAL PUBLIC LICENSE for more details.
+#
+# You should have received a copy of the GNU Affero General Public
+# License along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#
+"""
+This is the library with base functions for privacyIDEA.
+
+This module is tested in tests/test_lib_utils.py
+"""
 import logging
 log = logging.getLogger(__name__)
 import binascii
@@ -8,8 +31,79 @@ import urllib
 from privacyidea.lib.crypto import urandom, geturandom
 import string
 import re
-from datetime import timedelta
+from datetime import timedelta, datetime, time
+import traceback
 ENCODING = "utf-8"
+
+
+def check_time_in_range(time_range, check_time=None):
+    """
+    Check if the given time is contained in the time_range string.
+    The time_range can be something like
+
+     <DOW>-<DOW>: <hh:mm>-<hh:mm>,  <DOW>-<DOW>: <hh:mm>-<hh:mm>
+     <DOW>-<DOW>: <h:mm>-<hh:mm>,  <DOW>: <h:mm>-<hh:mm>
+     <DOW>: <h>-<hh>
+
+    DOW beeing the day of the week: Mon, Tue, Wed, Thu, Fri, Sat, Sun
+    hh: 00-23
+    mm: 00-59
+
+    If time is omitted the current time is used: time.localtime()
+
+    :param time_range: The timerange
+    :type time_range: basestring
+    :param time: The time to check
+    :type time: datetime
+    :return: True, if time is within time_range.
+    """
+    time_match = False
+    dow_index = {"mon": 1,
+                 "tue": 2,
+                 "wed": 3,
+                 "thu": 4,
+                 "fri": 5,
+                 "sat": 6,
+                 "sun": 7}
+
+    check_time = check_time or datetime.now()
+    check_day = check_time.isoweekday()
+    check_hour = time(check_time.hour, check_time.minute)
+    # remove whitespaces
+    time_range = ''.join(time_range.split())
+    # split into list of time ranges
+    time_ranges = time_range.split(",")
+    try:
+        for tr in time_ranges:
+            # tr is something like: Mon-Tue:09:30-17:30
+            dow, t = [x.lower() for x in tr.split(":", 1)]
+            if "-" in dow:
+                dow_start, dow_end = dow.split("-")
+            else:
+                dow_start = dow_end = dow
+            t_start, t_end = t.split("-")
+            # determine if we have times like 9:00-15:00 or 9-15
+            ts = [int(x) for x in t_start.split(":")]
+            te = [int(x) for x in t_end.split(":")]
+            if len(ts) == 2:
+                time_start = time(ts[0], ts[1])
+            else:
+                time_start = time(ts[0])
+            if len(te) == 2:
+                time_end = time(te[0], te[1])
+            else:
+                time_end = time(te[0])
+
+            # check the day and the time
+            if (dow_index.get(dow_start) <= check_day <= dow_index.get(dow_end)
+                    and
+                    time_start <= check_hour <= time_end):
+                time_match = True
+    except ValueError:
+        log.error("Wrong time range format: <dow>-<dow>:<hh:mm>-<hh:mm>")
+        log.debug("{0!s}".format(traceback.format_exc()))
+
+    return time_match
 
 
 def to_utf8(password):
@@ -26,7 +120,7 @@ def to_utf8(password):
         except UnicodeDecodeError as exx:
             # In case the password is already an encoded string, we fail to
             # encode it again...
-            log.debug("Failed to convert password: %s" % type(password))
+            log.debug("Failed to convert password: {0!s}".format(type(password)))
     return password
 
 
@@ -39,7 +133,7 @@ def generate_otpkey(key_size=20):
     :return: hexlified key
     :rtype: string
     """
-    log.debug("generating key of size %s" % key_size)
+    log.debug("generating key of size {0!s}".format(key_size))
     return binascii.hexlify(geturandom(key_size))
 
 
@@ -78,13 +172,13 @@ def create_img(data, width=0, alt=None, raw=False):
     data_uri = o_data.encode("base64").replace("\n", "")
 
     if width != 0:
-        width_str = " width=%d " % (int(width))
+        width_str = " width={0:d} ".format((int(width)))
 
     if alt is not None:
         val = urllib.urlencode({'alt': alt})
-        alt_str = " alt=%r " % (val[len('alt='):])
+        alt_str = " alt={0!r} ".format((val[len('alt='):]))
 
-    ret_img = 'data:image/png;base64,%s' % data_uri
+    ret_img = 'data:image/png;base64,{0!s}'.format(data_uri)
 
     return ret_img
 
@@ -205,8 +299,8 @@ def get_data_from_params(params, exclude_params, config_description, module,
         if t not in data:
             _missing = True
     if _missing:
-        raise Exception("type or description without necessary data! %s" %
-                        unicode(params))
+        raise Exception("type or description without necessary data! {0!s}".format(
+                        unicode(params)))
 
     return data, types, desc
 

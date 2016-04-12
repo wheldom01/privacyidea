@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 #
+# 2016-04-08 Cornelius Kölbel <cornelius.koelbel@netknights.it>
+#            Avoid "None" as redundant 2nd argument
 # 2015-11-04 Cornelius Kölbel <cornelius.koelbel@netknights.it>
 #            Add REMOTE_USER check
 # 2015-04-03 Cornelius Kölbel <cornelius.koelbel@netknights.it>
@@ -76,11 +78,13 @@ def before_request():
                          request.host
     g.policy_object = PolicyClass()
     g.audit_object = getAudit(current_app.config)
+    # We can add logic to use X-Forwarded-For
+    g.client_ip = request.remote_addr
     g.audit_object.log({"success": False,
-                        "client": request.remote_addr,
+                        "client": g.client_ip,
                         "client_user_agent": request.user_agent.browser,
                         "privacyidea_server": privacyidea_server,
-                        "action": "%s %s" % (request.method, request.url_rule),
+                        "action": "{0!s} {1!s}".format(request.method, request.url_rule),
                         "action_detail": "",
                         "info": ""})
     request.all_data = get_all_params(request.values, request.data)
@@ -227,7 +231,7 @@ def get_auth_token():
         # The user could not be identified against the admin database,
         # so we do the rest of the check
         options = {"g": g,
-                   "clientip": request.remote_addr}
+                   "clientip": g.client_ip}
         for key, value in request.all_data.items():
             if value and key not in ["g", "clientip"]:
                 options[key] = value
@@ -256,7 +260,7 @@ def get_auth_token():
         # Add the authtype to the JWT, so that we could use it for access
         # definitions
         rights = g.policy_object.ui_get_rights(role, realm, loginname,
-                                               request.remote_addr)
+                                               g.client_ip)
     else:
         import os
         import binascii
@@ -315,9 +319,9 @@ def check_auth_token(required_role=None):
     
         http -j POST http://localhost:5000/system/getConfig Authorization:ewrt
     """
-    auth_token = request.headers.get('PI-Authorization', None)
+    auth_token = request.headers.get('PI-Authorization')
     if not auth_token:
-        auth_token = request.headers.get('Authorization', None)
+        auth_token = request.headers.get('Authorization')
     r = verify_auth_token(auth_token, required_role)
     g.logged_in_user = {"username": r.get("username"),
                         "realm": r.get("realm"),
@@ -332,6 +336,6 @@ def get_rights():
 
     :reqheader Authorization: The authorization token acquired by /auth request
     """
-    enroll_types = g.policy_object.ui_get_enroll_tokentypes(request.remote_addr,
+    enroll_types = g.policy_object.ui_get_enroll_tokentypes(g.client_ip,
                                                             g.logged_in_user)
     return send_result(enroll_types)

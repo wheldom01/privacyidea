@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 #  privacyIDEA is a fork of LinOTP
 #
+#  2016-04-08 Cornelius Kölbel <cornelius@privacyidea.org>
+#             Avoid consecutive if statements
+#             Remove unreachable code
 #  2015-12-18 Cornelius Kölbel <cornelius@privacyidea.org>
 #             Add get_setting_type
 #  2015-10-12 Cornelius Kölbel <cornelius@privacyidea.org>
@@ -180,8 +183,8 @@ class TokenClass(object):
         """
         user_object = self.user
         user_info = user_object.info
-        user_identifier = "%s_%s" % (user_object.login, user_object.realm)
-        user_displayname = "%s %s" % (user_info.get("givenname", "."),
+        user_identifier = "{0!s}_{1!s}".format(user_object.login, user_object.realm)
+        user_displayname = "{0!s} {1!s}".format(user_info.get("givenname", "."),
                                       user_info.get("surname", "."))
         return user_identifier, user_displayname
 
@@ -243,13 +246,12 @@ class TokenClass(object):
         """
         self.token.del_info()
         for k, v in info.items():
-            if k.endswith(".type"):
-                # we have a type
-                if v == "password":
-                    # of type password, so we need to entrypt the value of
-                    # the original key (without type)
-                    orig_key = ".".join(k.split(".")[:-1])
-                    info[orig_key] = encryptPassword(info.get(orig_key, ""))
+            # check if type is a password
+            if k.endswith(".type") and v == "password":
+                # of type password, so we need to encrypt the value of
+                # the original key (without type)
+                orig_key = ".".join(k.split(".")[:-1])
+                info[orig_key] = encryptPassword(info.get(orig_key, ""))
 
         self.token.set_info(info)
 
@@ -431,14 +433,12 @@ class TokenClass(object):
 
         if otpKey is not None:
             self.token.set_otpkey(otpKey, reset_failcount=reset_failcount)
-        else:
-            if genkey == 1:
-                otpKey = self._genOtpKey_()
+        elif genkey == 1:
+            otpKey = self._genOtpKey_()
 
         # otpKey still None?? - raise the exception
-        if otpKey is None:
-            if self.hKeyRequired is True:
-                otpKey = getParam(param, "otpkey", required)
+        if otpKey is None and self.hKeyRequired is True:
+            otpKey = getParam(param, "otpkey", required)
 
         if otpKey is not None:
             self.add_init_details('otpkey', otpKey)
@@ -902,13 +902,14 @@ class TokenClass(object):
         :return: success if the counter is less than max
         :rtype: bool
         """
-        if self.get_count_auth_max() != 0:
-            if self.get_count_auth() >= self.get_count_auth_max():
-                return False
+        if self.get_count_auth_max() != 0 and self.get_count_auth() >= \
+                self.get_count_auth_max():
+            return False
 
-        if self.get_count_auth_success_max() != 0:
-            if self.get_count_auth_success() >= self.get_count_auth_success_max():
-                return False
+        if self.get_count_auth_success_max() != 0 and  \
+                        self.get_count_auth_success() >=  \
+                        self.get_count_auth_success_max():
+            return False
 
         return True
 
@@ -977,21 +978,20 @@ class TokenClass(object):
         :type reset: bool
         :return: the new counter value
         """
-        resetCounter = False
+        reset_counter = False
         if counter:
             self.token.count = counter + 1
         else:
             self.token.count += 1
 
-        if reset is True:
-            if get_from_config("DefaultResetFailCount") == "True":
-                resetCounter = True
+        if reset is True and get_from_config("DefaultResetFailCount") == "True":
+            reset_counter = True
 
-        if resetCounter and self.token.active:
-            if self.token.failcount < self.token.maxfail:
-                self.token.failcount = 0
+        if (reset_counter and self.token.active and self.token.failcount <
+            self.token.maxfail):
+            self.token.failcount = 0
 
-        # make DB persistent immediately, to avoud the reusage of the counter
+        # make DB persistent immediately, to avoid the re-usage of the counter
         self.token.save()
         return self.token.count
 
@@ -1076,10 +1076,10 @@ class TokenClass(object):
         """
         ldict = {}
         for attr in self.__dict__:
-            key = "%r" % attr
-            val = "%r" % getattr(self, attr)
+            key = "{0!r}".format(attr)
+            val = "{0!r}".format(getattr(self, attr))
             ldict[key] = val
-        res = "<%r %r>" % (self.__class__, ldict)
+        res = "<{0!r} {1!r}>".format(self.__class__, ldict)
         return res
 
     def get_init_detail(self, params=None, user=None):
@@ -1111,7 +1111,7 @@ class TokenClass(object):
 
         if otpkey is not None:
             response_detail["otpkey"] = {"description": "OTP seed",
-                                         "value": "seed://%s" % otpkey,
+                                         "value": "seed://{0!s}".format(otpkey),
                                          "img": create_img(otpkey, width=200)}
 
         return response_detail
@@ -1123,10 +1123,9 @@ class TokenClass(object):
         url = None
         hparam = {}
 
-        if response_detail is not None:
-            if 'googleurl' in response_detail:
-                url = response_detail.get('googleurl')
-                hparam['alt'] = url
+        if response_detail is not None and 'googleurl' in response_detail:
+            url = response_detail.get('googleurl')
+            hparam['alt'] = url
 
         return url, hparam
 
@@ -1178,9 +1177,8 @@ class TokenClass(object):
         request_is_challenge = False
         options = options or {}
         pin_match = self.check_pin(passw, user=user, options=options)
-        if pin_match is True:
-            if "data" in options or "challenge" in options:
-                request_is_challenge = True
+        if pin_match is True and "data" in options or "challenge" in options:
+            request_is_challenge = True
 
         return request_is_challenge
 
@@ -1238,7 +1236,7 @@ class TokenClass(object):
         otp_counter = -1
 
         # fetch the transaction_id
-        transaction_id = options.get('transaction_id', None)
+        transaction_id = options.get('transaction_id')
         if transaction_id is None:
             transaction_id = options.get('state')
 
@@ -1336,14 +1334,17 @@ class TokenClass(object):
         This provides a function to be plugged into the API endpoint
         /ttype/<tokentype> which is defined in api/ttype.py
 
+        The method should return
+            return "json", {}
+        or
+            return "text", "OK"
+
         :param request: The Flask request
         :param g: The Flask global object g
         :return: Flask Response or text
         """
-        raise ParameterError("%s does not support the API endpoint" %
-                             cls.get_tokentype())
-        return "json", {}
-        # or return "text", "OK"
+        raise ParameterError("{0!s} does not support the API endpoint".format(
+                             cls.get_tokentype()))
 
     @staticmethod
     def test_config(params=None):

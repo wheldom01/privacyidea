@@ -4,6 +4,10 @@
 #  License:  AGPLv3
 #  contact:  cornelius@privacyidea.org
 #
+#  2016-04-08 Cornelius Kölbel <cornelius.koelbel@netknights.it>
+#             Simplifying out of bounds check
+#             Avoid repetition in comparison
+#
 # This code is free software; you can redistribute it and/or
 # modify it under the terms of the GNU AFFERO GENERAL PUBLIC LICENSE
 # License as published by the Free Software Foundation; either
@@ -78,23 +82,23 @@ class PasswordHash(object):
     def __init__(self, iteration_count_log2=8, portable_hashes=True,
                  algorithm=''):
         alg = algorithm.lower()
-        if (alg == 'blowfish' or alg == 'bcrypt') and _bcrypt_hashpw is None:
+        if alg in ['blowfish', 'bcrypt'] and _bcrypt_hashpw is None:
             raise NotImplementedError('The bcrypt module is required')
         self.itoa64 = \
             './0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
-        if iteration_count_log2 < 4 or iteration_count_log2 > 31:
+        if not (4 <= iteration_count_log2 <= 31):
             iteration_count_log2 = 8
         self.iteration_count_log2 = iteration_count_log2
         self.portable_hashes = portable_hashes
         self.algorithm = algorithm
-        self.random_state = '%r%r' % (time.time(), _pid)
+        self.random_state = '{0!r}{1!r}'.format(time.time(), _pid)
 
     def get_random_bytes(self, count):
         outp = ''
         try:
             outp = os.urandom(count)
         except Exception as exx:  # pragma: no cover
-            log.debug("problem getting os.urandom: %s" % exx)
+            log.debug("problem getting os.urandom: {0!s}".format(exx))
         if len(outp) < count:  # pragma: no cover
             outp = ''
             rem = count
@@ -141,7 +145,7 @@ class PasswordHash(object):
         if setting[0:3] not in ['$P$', '$H$', '$S$']:
             return outp
         count_log2 = self.itoa64.find(setting[3])
-        if count_log2 < 7 or count_log2 > 30:
+        if not (7 <= count_log2 <= 30):
             return outp
         count = 1 << count_log2
         salt = setting[4:12]
@@ -208,11 +212,10 @@ class PasswordHash(object):
     def hash_password(self, pw):  # pragma: no cover
         rnd = ''
         alg = self.algorithm.lower()
-        if (not alg or alg == 'blowfish' or alg == 'bcrypt') \
-             and not self.portable_hashes:
-            if _bcrypt_hashpw is None:
-                if alg == 'blowfish' or alg == 'bcrypt':
-                    raise NotImplementedError('The bcrypt module is required')
+        if (not alg or alg in ['blowfish', 'bcrypt'] and not
+                self.portable_hashes):
+            if _bcrypt_hashpw is None and alg in ['blowfish', 'bcrypt']:
+                raise NotImplementedError('The bcrypt module is required')
             else:
                 rnd = self.get_random_bytes(16)
                 salt = self.gensalt_blowfish(rnd)
@@ -394,11 +397,10 @@ class IdResolver (UserIdResolver):
                                                       
             for r in result:
                 if userinfo.keys():  # pragma: no cover
-                    raise Exception("More than one user with userid %s found!"
-                                    % userId)
+                    raise Exception("More than one user with userid {0!s} found!".format(userId))
                 userinfo = self._get_user_from_mapped_object(r)
         except Exception as exx:  # pragma: no cover
-            log.error("Could not get the userinformation: %r" % exx)
+            log.error("Could not get the userinformation: {0!r}".format(exx))
         
         return userinfo
     
@@ -439,7 +441,7 @@ class IdResolver (UserIdResolver):
                 user = self._get_user_from_mapped_object(r)
                 userid = user["id"]
         except Exception as exx:    # pragma: no cover
-            log.error("Could not get the userinformation: %r" % exx)
+            log.error("Could not get the userinformation: {0!r}".format(exx))
         
         return userid
     
@@ -456,8 +458,8 @@ class IdResolver (UserIdResolver):
             if self.map.get("userid") in r:
                 user["id"] = r[self.map.get("userid")]
         except UnicodeEncodeError:  # pragma: no cover
-            log.error("Failed to convert user: %r" % r)
-            log.debug("%s" % traceback.format_exc())
+            log.error("Failed to convert user: {0!r}".format(r))
+            log.debug("{0!s}".format(traceback.format_exc()))
         
         for key in ["username",
                     "surname",
@@ -478,8 +480,8 @@ class IdResolver (UserIdResolver):
 
             except UnicodeDecodeError:  # pragma: no cover
                 user[key] = "decoding_error"
-                log.error("Failed to convert user: %r" % r)
-                log.debug("%s" % traceback.format_exc())
+                log.error("Failed to convert user: {0!r}".format(r))
+                log.debug("{0!s}".format(traceback.format_exc()))
         
         return user
 
@@ -564,9 +566,9 @@ class IdResolver (UserIdResolver):
                   'Server': self.server,
                   'Database': self.database}
         self.connect_string = self._create_connect_string(params)
-        log.info("using the connect string %s" % self.connect_string)
+        log.info("using the connect string {0!s}".format(self.connect_string))
         try:
-            log.debug("using pool_size=%s and pool_timeout=%s" % (
+            log.debug("using pool_size={0!s} and pool_timeout={1!s}".format(
                       self.pool_size, self.pool_timeout))
             self.engine = create_engine(self.connect_string,
                                         encoding=self.encoding,
@@ -626,12 +628,12 @@ class IdResolver (UserIdResolver):
         password = ""
         conParams = ""
         if param.get("Port"):
-            port = ":%s" % param.get("Port")
+            port = ":{0!s}".format(param.get("Port"))
         if param.get("Password"):
-            password = ":%s" % param.get("Password")
+            password = ":{0!s}".format(param.get("Password"))
         if param.get("conParams"):
-            conParams = "?%s" % param.get("conParams")
-        connect_string = "%s://%s%s%s%s%s/%s%s" % (param.get("Driver", ""),
+            conParams = "?{0!s}".format(param.get("conParams"))
+        connect_string = "{0!s}://{1!s}{2!s}{3!s}{4!s}{5!s}/{6!s}{7!s}".format(param.get("Driver", ""),
                                                    param.get("User", ""),
                                                    password,
                                                    "@" if (param.get("User")
@@ -644,7 +646,7 @@ class IdResolver (UserIdResolver):
         # SQLAlchemy does not like a unicode connect string!
         if param.get("Driver").lower() == "sqlite":
             connect_string = str(connect_string)
-        log.debug("SQL connectstring: %r" % connect_string)
+        log.debug("SQL connectstring: {0!r}".format(connect_string))
         return connect_string
             
     @classmethod
@@ -668,7 +670,7 @@ class IdResolver (UserIdResolver):
         desc = None
         
         connect_string = cls._create_connect_string(param)
-        log.info("using the connect string %s" % connect_string)
+        log.info("using the connect string {0!s}".format(connect_string))
         engine = create_engine(connect_string)
         # create a configured "Session" class
         session = sessionmaker(bind=engine)()
@@ -681,9 +683,9 @@ class IdResolver (UserIdResolver):
             result = session.query(TABLE).filter(filter_condition).count()
 
             num = result
-            desc = "Found %i users." % num
+            desc = "Found {0:d} users.".format(num)
         except Exception as exx:
-            desc = "failed to retrieve users: %s" % exx
+            desc = "failed to retrieve users: {0!s}".format(exx)
             
         return num, desc
 
@@ -701,7 +703,7 @@ class IdResolver (UserIdResolver):
         """
         attributes = attributes or {}
         kwargs = self._attributes_to_db_columns(attributes)
-        log.debug("Insert new user with attributes %s" % kwargs)
+        log.debug("Insert new user with attributes {0!s}".format(kwargs))
         r = self.TABLE.insert(**kwargs)
         self.db.commit()
         # Return the UID of the new object
@@ -752,7 +754,7 @@ class IdResolver (UserIdResolver):
             self.session.delete(user_obj)
             self.session.commit()
         except Exception as exx:
-            log.error("Error deleting user: %s" % exx)
+            log.error("Error deleting user: {0!s}".format(exx))
             res = False
         return res
 

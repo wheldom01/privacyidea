@@ -5,7 +5,7 @@ import glob
 import sys
 
 #VERSION="2.1dev4"
-VERSION="2.11dev0"
+VERSION="2.12dev1"
 
 # Taken from kennethreitz/requests/setup.py
 package_directory = os.path.realpath(os.path.dirname(__file__))
@@ -18,7 +18,7 @@ def get_file_contents(file_path):
         full_path = os.path.join(package_directory, file_path)
         content = open(full_path, 'r').read()
     except:
-        print >> sys.stderr, "### could not open file %r" % file_path
+        print >> sys.stderr, "### could not open file {0!r}".format(file_path)
     return content
 
 def get_file_list(file_path):

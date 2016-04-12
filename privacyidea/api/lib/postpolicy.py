@@ -193,7 +193,7 @@ def check_tokentype(request, response):
 
     allowed_tokentypes = policy_object.get_action_values("tokentype",
                                                  scope=SCOPE.AUTHZ,
-                                                 client=request.remote_addr)
+                                                 client=g.client_ip)
     if tokentype and allowed_tokentypes and tokentype not in allowed_tokentypes:
         g.audit_object.log({"success": False,
                             'action_detail': "Tokentype not allowed for "
@@ -220,7 +220,7 @@ def check_serial(request, response):
     # get the serials from a policy definition
     allowed_serials = policy_object.get_action_values("serial",
                                                     scope=SCOPE.AUTHZ,
-                                                    client=request.remote_addr)
+                                                    client=g.client_ip)
 
     # If we can compare a serial and if we do serial matching!
     if serial and allowed_serials:
@@ -253,7 +253,7 @@ def no_detail_on_success(request, response):
     # get the serials from a policy definition
     detailPol = policy_object.get_policies(action=ACTION.NODETAILSUCCESS,
                                            scope=SCOPE.AUTHZ,
-                                           client=request.remote_addr,
+                                           client=g.client_ip,
                                            active=True)
 
     if detailPol and content.get("result", {}).get("value"):
@@ -282,7 +282,7 @@ def no_detail_on_fail(request, response):
     # get the serials from a policy definition
     detailPol = policy_object.get_policies(action=ACTION.NODETAILFAIL,
                                            scope=SCOPE.AUTHZ,
-                                           client=request.remote_addr,
+                                           client=g.client_ip,
                                            active=True)
 
     if detailPol and content.get("result", {}).get("value") is False:
@@ -305,25 +305,25 @@ def offline_info(request, response):
     """
     content = json.loads(response.data)
     # check if the authentication was successful
-    if content.get("result").get("value") is True:
-        # If there is no remote address, we can not determine offline information
-        if request.remote_addr:
-            client_ip = netaddr.IPAddress(request.remote_addr)
-            # check if there is a MachineToken definition
-            detail = content.get("detail", {})
-            serial = detail.get("serial")
-            try:
-                # if the hostname can not be identified, there might be no
-                # offline definition!
-                hostname = get_hostname(ip=client_ip)
-                auth_items = get_auth_items(hostname=hostname, ip=client_ip,
-                                            serial=serial, application="offline",
-                                            challenge=request.all_data.get("pass"))
-                if auth_items:
-                    content["auth_items"] = auth_items
-                    response.data = json.dumps(content)
-            except Exception as exx:
-                log.info(exx)
+    if content.get("result").get("value") is True and g.client_ip:
+        # If there is no remote address, we can not determine
+        # offline information
+        client_ip = netaddr.IPAddress(g.client_ip)
+        # check if there is a MachineToken definition
+        detail = content.get("detail", {})
+        serial = detail.get("serial")
+        try:
+            # if the hostname can not be identified, there might be no
+            # offline definition!
+            hostname = get_hostname(ip=client_ip)
+            auth_items = get_auth_items(hostname=hostname, ip=client_ip,
+                                        serial=serial, application="offline",
+                                        challenge=request.all_data.get("pass"))
+            if auth_items:
+                content["auth_items"] = auth_items
+                response.data = json.dumps(content)
+        except Exception as exx:
+            log.info(exx)
     return response
 
 
@@ -345,7 +345,7 @@ def get_webui_settings(request, response):
 
         policy_object = g.policy_object
         try:
-            client = request.remote_addr
+            client = g.client_ip
         except Exception:
             client = None
         logout_time_pol = policy_object.get_action_values(
@@ -459,51 +459,50 @@ def autoassign(request, response):
                                   scope=SCOPE.ENROLL,
                                   user=user_obj.login,
                                   realm=user_obj.realm,
-                                  client=request.remote_addr)
+                                  client=g.client_ip)
 
             if len(autoassign_values) > 1:
                 raise PolicyError("Contradicting Autoassign policies.")
-            if autoassign_values:
-                # check if the user has no token
-                if get_tokens(user=user_obj, count=True) == 0:
-                    # Check is the token would match
-                    # get all unassigned tokens in the realm and look for
-                    # a matching OTP:
-                    realm_tokens = get_tokens(realm=user_obj.realm,
-                                              assigned=False)
+            # check if the user has no token
+            if autoassign_values and get_tokens(user=user_obj, count=True) == 0:
+                # Check is the token would match
+                # get all unassigned tokens in the realm and look for
+                # a matching OTP:
+                realm_tokens = get_tokens(realm=user_obj.realm,
+                                          assigned=False)
 
-                    for token_obj in realm_tokens:
-                        (res, pin, otp) = token_obj.split_pin_pass(password)
-                        if res:
-                            pin_check = True
-                            if autoassign_values[0] == \
-                                    AUTOASSIGNVALUE.USERSTORE:
-                                # If the autoassign policy is set to userstore,
-                                # we need to check against the userstore.
-                                pin_check = user_obj.check_password(pin)
-                            if pin_check:
-                                otp_check = token_obj.check_otp(otp)
-                                if otp_check >= 0:
-                                    # we found a matching token
-                                    #    check MAXTOKENUSER and MAXTOKENREALM
-                                    check_max_token_user(request=request)
-                                    check_max_token_realm(request=request)
-                                    #    Assign token
-                                    assign_token(serial=token_obj.token.serial,
-                                                 user=user_obj, pin=pin)
-                                    # Set the response to true
-                                    content.get("result")["value"] = True
-                                    # Set the serial number
-                                    if not content.get("detail"):
-                                        content["detail"] = {}
-                                    content.get("detail")["serial"] = \
-                                        token_obj.token.serial
-                                    content.get("detail")["type"] = token_obj.type
-                                    content.get("detail")["message"] = "Token " \
-                                                                       "assigned to " \
-                                                                       "user via " \
-                                                                       "Autoassignment"
-                                    response.data = json.dumps(content)
-                                    break
+                for token_obj in realm_tokens:
+                    (res, pin, otp) = token_obj.split_pin_pass(password)
+                    if res:
+                        pin_check = True
+                        if autoassign_values[0] == \
+                                AUTOASSIGNVALUE.USERSTORE:
+                            # If the autoassign policy is set to userstore,
+                            # we need to check against the userstore.
+                            pin_check = user_obj.check_password(pin)
+                        if pin_check:
+                            otp_check = token_obj.check_otp(otp)
+                            if otp_check >= 0:
+                                # we found a matching token
+                                #    check MAXTOKENUSER and MAXTOKENREALM
+                                check_max_token_user(request=request)
+                                check_max_token_realm(request=request)
+                                #    Assign token
+                                assign_token(serial=token_obj.token.serial,
+                                             user=user_obj, pin=pin)
+                                # Set the response to true
+                                content.get("result")["value"] = True
+                                # Set the serial number
+                                if not content.get("detail"):
+                                    content["detail"] = {}
+                                content.get("detail")["serial"] = \
+                                    token_obj.token.serial
+                                content.get("detail")["type"] = token_obj.type
+                                content.get("detail")["message"] = "Token " \
+                                                                   "assigned to " \
+                                                                   "user via " \
+                                                                   "Autoassignment"
+                                response.data = json.dumps(content)
+                                break
 
     return response

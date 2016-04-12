@@ -63,6 +63,7 @@ log = logging.getLogger(__name__)
 @user_blueprint.before_request
 @caconnector_blueprint.before_request
 @system_blueprint.before_request
+@radiusserver_blueprint.before_request
 @user_required
 def before_user_request():
     before_request()
@@ -76,7 +77,6 @@ def before_user_request():
 @policy_blueprint.before_request
 @application_blueprint.before_request
 @smtpserver_blueprint.before_request
-@radiusserver_blueprint.before_request
 @admin_required
 def before_admin_request():
     before_request()
@@ -96,19 +96,30 @@ def before_request():
 
     g.policy_object = PolicyClass()
     g.audit_object = getAudit(current_app.config)
+    # We can add logic to use X-Forwarded-For
+    g.client_ip = request.remote_addr
     privacyidea_server = current_app.config.get("PI_AUDIT_SERVERNAME") or \
                          request.host
     # Already get some typical parameters to log
     serial = getParam(request.all_data, "serial")
     realm = getParam(request.all_data, "realm")
-    # log it
+    user_loginname = ""
+    if "blueprint_token" in request.endpoint:
+        # In case of token endpoint we evaluate the user in the request.
+        # Note: In policy-endpoint "user" is part of the policy configuration
+        #  and will cause an exception
+        user = get_user_from_param(request.all_data)
+        user_loginname = user.login
+        realm = user.realm or realm
+
     g.audit_object.log({"success": False,
                         "serial": serial,
+                        "user": user_loginname,
                         "realm": realm,
-                        "client": request.remote_addr,
+                        "client": g.client_ip,
                         "client_user_agent": request.user_agent.browser,
                         "privacyidea_server": privacyidea_server,
-                        "action": "%s %s" % (request.method, request.url_rule),
+                        "action": "{0!s} {1!s}".format(request.method, request.url_rule),
                         "action_detail": "",
                         "info": ""})
 

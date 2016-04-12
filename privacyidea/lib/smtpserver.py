@@ -18,11 +18,13 @@
 #
 #
 from privacyidea.models import SMTPServer as SMTPServerDB
-from privacyidea.lib.crypto import decryptPassword, encryptPassword
+from privacyidea.lib.crypto import (decryptPassword, encryptPassword,
+                                    FAILED_TO_DECRYPT_PASSWORD)
 import logging
 from privacyidea.lib.log import log_with
-import datetime
+from time import gmtime, strftime
 import smtplib
+from email.mime.text import MIMEText
 from privacyidea.lib.error import ConfigAdminError
 __doc__ = """
 This is the library for creating, listing and deleting SMTPServer objects in
@@ -72,37 +74,38 @@ class SMTPServer(object):
         :type sender: basestring
         :return: True or False
         """
+        if type(recipient) != list:
+            recipient = [recipient]
         mail_from = sender or config.sender
-        date = datetime.datetime.utcnow().strftime("%c")
-        body = """From: %s
-Subject: %s
-Date: %s
-
-%s""" % (mail_from, subject, date, body)
+        msg = MIMEText(body)
+        msg['Subject'] = subject
+        msg['From'] = mail_from
+        msg['To'] = ",".join(recipient)
+        msg['Date'] = strftime("%a, %d %b %Y %H:%M:%S +0000", gmtime())
 
         mail = smtplib.SMTP(config.server, port=int(config.port))
         mail.ehlo()
         # Start TLS if required
         if config.tls:
-            log.debug("Trying to STARTTLS: %s" % config.tls)
+            log.debug("Trying to STARTTLS: {0!s}".format(config.tls))
             mail.starttls()
         # Authenticate, if a username is given.
         if config.username:
-            log.debug("Doing authentication with %s" % config.username)
+            log.debug("Doing authentication with {0!s}".format(config.username))
             password = decryptPassword(config.password)
+            if password == FAILED_TO_DECRYPT_PASSWORD:
+                password = config.password
             mail.login(config.username, password)
-        r = mail.sendmail(mail_from, recipient, body)
-        log.info("Mail sent: %s" % r)
+        r = mail.sendmail(mail_from, recipient, msg.as_string())
+        log.info("Mail sent: {0!s}".format(r))
         # r is a dictionary like {"recp@destination.com": (200, 'OK')}
         # we change this to True or False
-        if type(recipient) != list:
-            recipient = [recipient]
         success = True
         for one_recipient in recipient:
             res_id, res_text = r.get(one_recipient, (200, "OK"))
             if res_id != 200 and res_text != "OK":
                 success = False
-                log.error("Failed to send email to %s: %s, %s" % (recipient,
+                log.error("Failed to send email to {0!s}: {1!s}, {2!s}".format(one_recipient,
                                                                   res_id,
                                                                   res_text))
         mail.quit()
