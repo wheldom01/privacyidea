@@ -853,10 +853,11 @@ class LDAPResolverTestCase(MyTestCase):
                       'LDAPSEARCHFILTER': '(cn=*)',
                       'LDAPFILTER': '(&(cn=%s))',
                       'USERINFO': '{ "username": "cn",'
-                                  '"phone" : "telephoneNumber", '
-                                  '"mobile" : "mobile"'
-                                  ', "email" : "mail", '
-                                  '"surname" : "sn", '
+                                  '"phone" : "telephoneNumber",'
+                                  '"mobile" : "mobile",'
+                                  '"password" : "userPassword",'
+                                  '"email" : "mail",'
+                                  '"surname" : "sn",'
                                   '"givenname" : "givenName" }',
                       'UIDTYPE': 'objectGUID',
                       'NOREFERRALS': True
