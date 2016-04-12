@@ -678,12 +678,12 @@ class IdResolver (UserIdResolver):
             params = self._attributes_to_ldap_attributes(attributes)
             self.l.add(uid, object_class, params)
         except Exception as e:
-            log.error("Error accessing LDAP server: %s" % e)
-            log.debug("%s" % traceback.format_exc())
+            log.error("Error accessing LDAP server: {0}".format(e))
+            log.debug("{0}".format(traceback.format_exc()))
             return False
 
         if self.l.result.get('result') != 0:
-            log.error("Error during adding of user: %s details" % uid)
+            log.error("Error during adding of user: {0} details".format(uid))
             return False
 
         return uid
@@ -704,7 +704,7 @@ class IdResolver (UserIdResolver):
 
             self.l.delete(uid)
         except Exception as exx:
-            log.error("Error deleting user: %s" % exx)
+            log.error("Error deleting user: {0}".format(exx))
             res = False
         return res
 
@@ -734,7 +734,8 @@ class IdResolver (UserIdResolver):
 
         return ldap_attributes
 
-    def _create_ssha(self, password):
+    @staticmethod
+    def _create_ssha(password):
         """
         Encodes the given password as a base64 SSHA hash
         :param password: string to hash 
@@ -745,11 +746,11 @@ class IdResolver (UserIdResolver):
         salt = geturandom(4)
 
         # Hash password string and append the salt
-        shaHash = hashlib.sha1(password)
-        shaHash.update(salt)
+        sha_hash = hashlib.sha1(password)
+        sha_hash.update(salt)
 
         # Create a base64 encoded string
-        digest_b64 = '{}{}'.format(shaHash.digest(),
+        digest_b64 = '{0}{1}'.format(sha_hash.digest(),
                 salt).encode('base64').strip()
 
         # Tag it with SSHA

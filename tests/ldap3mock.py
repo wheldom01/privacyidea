@@ -138,7 +138,7 @@ class Connection(object):
     def bind(self):
         return self.bound
 
-    def add(self, dn, object_class=None, attributes=None, controls=None):
+    def add(self, dn, object_class=None, attributes=None):
 
         self.result = { 'dn' : '',
                         'referrals' : None,
@@ -152,18 +152,17 @@ class Connection(object):
             index = self._find_user(dn)
         except StopIteration:
             # If we get here the user doesn't exist so continue
-            pass
+	    # Create a entry object for the new user
+	    entry = {}
+	    entry['dn'] = dn
+	    entry['attributes'] = attributes
         else:
             # User already exists
             self.result["description"] = "failure"
             self.result["result"] = 68 
-            self.result["message"] = "Error entryAlreadyExists for %s" % dn
+            self.result["message"] = \
+                    "Error entryAlreadyExists for {0}".format(dn)
             return False
-
-        # Create a entry object for the new user
-        entry = {}
-        entry['dn'] = dn
-        entry['attributes'] = attributes
 
         # Add the user entry to the directory
         self.directory.append(entry)
@@ -190,7 +189,7 @@ class Connection(object):
             # If we get here the user doesn't exist so continue
             self.result["description"] = "failure"
             self.result["result"] = 32
-            self.result["message"] = "Error no such object: %s" % dn
+            self.result["message"] = "Error no such object: {0}".format(dn)
             return False
 
         # Delete the entry object for the user
@@ -373,7 +372,8 @@ class Ldap3Mock(object):
 
         return "FakeServerObject"
 
-    def _check_password(self, user_supplied_pw, reference_pw):
+    @staticmethod
+    def _check_password(user_supplied_pw, reference_pw):
         # Strip the label from the string
         label_removed = reference_pw[6:]
 
