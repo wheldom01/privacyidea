@@ -105,6 +105,7 @@ class IdResolver (UserIdResolver):
         self.bindpw = ""
         self.object_classes = []
         self.dn_template = ""
+        self.additional_attributes = {}
         self.timeout = 5.0  # seconds!
         self.sizelimit = 500
         self.loginname_attribute = ""
@@ -694,7 +695,7 @@ class IdResolver (UserIdResolver):
             self._bind()
             params = self._attributes_to_ldap_attributes(attributes)
             # Make sure the additional_attributes dict is not empty
-            if self.additional_attributes:
+            if isinstance(self.additional_attributes, dict) and self.additional_attributes:
                 params.update(self.additional_attributes)
             self.l.add(dn, self.object_classes, params)
 

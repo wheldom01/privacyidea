@@ -1119,6 +1119,54 @@ class LDAPResolverTestCase(MyTestCase):
         self.assertFalse(user_id)
 
     @ldap3mock.activate
+    def test_16_invalid_additional_attributes(self):
+        ldap3mock.setLDAPDirectory(LDAPDirectory)
+        y = LDAPResolver()
+        classes = "top, inetOrgPerson"
+        additional_attribs = "invalid"
+        y.loadConfig({'LDAPURI': 'ldap://localhost',
+                      'LDAPBASE': 'o=test',
+                      'BINDDN': 'cn=manager,ou=example,o=test',
+                      'BINDPW': 'ldaptest',
+                      'LOGINNAMEATTRIBUTE': 'cn',
+                      'LDAPSEARCHFILTER': '(cn=*)',
+                      'LDAPFILTER': '(&(cn=%s))',
+                      'USERINFO': '{ "username": "cn",'
+                                  '"phone" : "telephoneNumber", '
+                                  '"mobile" : "mobile",'
+                                  '"email" : "email",'
+                                  '"password" : "userPassword",'
+                                  '"surname" : "sn", '
+                                  '"givenname" : "givenName", '
+                                  '"additionalAttr": "uidNumber" }',
+                      'ADDITIONAL_ATTRIBUTES': additional_attribs,
+                      'OBJECT_CLASSES': classes,
+                      'DN_TEMPLATE': "cn=<username>,ou=example,o=test",
+                      'UIDTYPE': 'DN',
+                      'NOREFERRALS': True
+        })
+
+        user = "achmed"
+
+        # First we add the user with add_user
+        r = y.add_user({"username" : user,
+                        "surname" : "Ali",
+                        "email" : "achmed.ali@example.com",
+                        "password" : "testing123",
+                        'mobile': ["1234", "45678"],
+                        "givenname" : "Achmed"})
+        self.assertTrue(r)
+
+        # Check that the additional attributes are available
+        user_id = y.getUserId("achmed")
+
+        # Now we delete the user with add_user
+        y.delete_user(user_id)
+        # Now there should be no achmed anymore
+        user_id = y.getUserId("achmed")
+        self.assertFalse(user_id)
+
+    @ldap3mock.activate
     def test_21_test_objectGUID_getUserInfo(self):
         ldap3mock.setLDAPDirectory(LDAPDirectory)
         y = LDAPResolver()
