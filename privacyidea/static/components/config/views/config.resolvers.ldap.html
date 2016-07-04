@@ -134,6 +134,13 @@
                        class="form-control"
                        placeholder="CN=<username>,<basendn>"
                        ng-model="params.DN_TEMPLATE" />
+                <label for="additional_attribs" class="control-label" translate>
+                    Additional LDAP attributes and their values
+                </label>
+                <input name="additional_attribs" id="additional_attribs"
+                       class="form-control"
+                       placeholder='{"homeDirectory": "/home/ausername", "uidNumber": "5001", "gidNumber": "5001"}'
+                       ng-model="params.ADDITIONAL_ATTRIBS" />
             </div>
         </div>
     </div>
