@@ -566,12 +566,20 @@ def autoassign(request, response):
                                     content["detail"] = {}
                                 content.get("detail")["serial"] = \
                                     token_obj.token.serial
+                                content.get("detail")["otplen"] = \
+                                    token_obj.token.otplen
                                 content.get("detail")["type"] = token_obj.type
                                 content.get("detail")["message"] = "Token " \
                                                                    "assigned to " \
                                                                    "user via " \
                                                                    "Autoassignment"
                                 response.data = json.dumps(content)
+
+                                g.audit_object.log(
+                                    {"success": True,
+                                     "action_info":
+                                         "Token assigned via auto assignment",
+                                     "serial": token_obj.token.serial})
                                 break
 
     return response
