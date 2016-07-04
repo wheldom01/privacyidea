@@ -481,7 +481,7 @@ class IdResolver (UserIdResolver):
         # ["top", "person", "organizationalPerson", "user", "inetOrgPerson"]
         self.object_classes = [cl.strip() for cl in config.get("OBJECT_CLASSES", "").split(",")]
         self.dn_template = config.get("DN_TEMPLATE", "")
-        self.additional_attributes = config.get("ADDITIONAL_ATTRIBUTES", "")
+        self.additional_attributes = config.get("ADDITIONAL_ATTRIBUTES", {})
         self.bindpw = config.get("BINDPW")
         self.timeout = float(config.get("TIMEOUT", 5))
         self.sizelimit = int(config.get("SIZELIMIT", 500))
@@ -693,7 +693,8 @@ class IdResolver (UserIdResolver):
         try:
             self._bind()
             params = self._attributes_to_ldap_attributes(attributes)
-            if self.additional_attributes != "":
+            # Make sure the additional_attributes dict is not empty
+            if self.additional_attributes:
                 params.update(self.additional_attributes)
             self.l.add(dn, self.object_classes, params)
 
