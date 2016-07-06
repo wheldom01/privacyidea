@@ -954,6 +954,7 @@ class LDAPResolverTestCase(MyTestCase):
                                   '"password" : "userPassword",'
                                   '"surname" : "sn", '
                                   '"givenname" : "givenName", '
+                                  '"additionalAttr": "uidNumber",'
                                   '"accountExpires": "accountExpires" }',
                       'OBJECT_CLASSES': classes,
                       'DN_TEMPLATE': "cn=<username>,ou=example,o=test",
@@ -968,6 +969,7 @@ class LDAPResolverTestCase(MyTestCase):
                         "surname" : "Ali",
                         "email" : "achmed.ali@example.com",
                         "password" : "testing123",
+                        "uidNumber" : "5001",
                         'mobile': ["1234", "45678"],
                         "givenname" : "Achmed"})
         self.assertTrue(r)
@@ -975,6 +977,10 @@ class LDAPResolverTestCase(MyTestCase):
         # Find the new users user_id
         user_id = y.getUserId("achmed")
         self.assertTrue(user_id == "cn=achmed,ou=example,o=test", user_id)
+
+        # Test additional attribute
+        userinfo = y.getUserInfo(user_id)
+        self.assertEqual(userinfo.get("additionalAttr"), "5001")
 
         # Test changing the password
         r = y.update_user(user_id, {"password": "test"})

@@ -748,6 +748,8 @@ class IdResolver (UserIdResolver):
                         ldap_attributes[self.map.get(fieldname)] = pw_hash
                 else:
                     ldap_attributes[self.map.get(fieldname)] = value
+            else:
+                ldap_attributes[fieldname] = value
 
         return ldap_attributes
 
