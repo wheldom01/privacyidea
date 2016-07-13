@@ -1,5 +1,5 @@
 <div class="panel" ng-controller="userAddController">
-    <form name="formAddUser" role="form" validate>
+    <form name="User" role="form" validate>
         <h2 translate>Add a new user</h2>
 
         <div ng-show="formInit.resolvernames.length">
@@ -11,6 +11,7 @@
                                 name="resolvername"
                                 id="resolvername"
                                 ng-model="resolvername"
+                                ng-change="getAddUserAttributes(resolvername)"
                                 ng-options="resolvername for resolvername in formInit.resolvernames">
                         </select>
                     </div>
@@ -23,57 +24,61 @@
                     </div>
                 </div>
 
-                <div class="col-xs-6">
-                    <div class="form-group">
-                        <label for="username" translate>Username</label>
-                        <input name="givenname" class="form-control"
-                               required
-                               ng-model="User.username">
-                    </div>
-                    <div class="form-group">
-                        <label for="givenname" translate>Given name</label>
-                        <input name="givenname" class="form-control"
-                               ng-model="User.givenname">
-                    </div>
-                    <div class="form-group">
-                        <label for="surname" translate>Surname</label>
-                        <input name="surname" class="form-control"
-                               ng-model="User.surname">
-                    </div>
-                    <div class="form-group">
-                        <label for="description" translate>Description</label>
-                        <input name="description" class="form-control"
-                               ng-model="User.description">
-                    </div>
+             <div class="col-xs-6" ng-show"resolvername">
+                 <div ng-repeat="field in leftColumn">
+                     <ng-form name="formLeft">
+                     <!-- TEXT FIELDS -->
+                     <div ng-if="field.type=='text'" class="form-group">
+                        <label for="{{ field.label }}" translate>{{ field.label }}</label>
+                        <input type="{{ field.type }}" name="{{ field.name }}" id="{{field.name}}" data-ng-model="field.data" class="form-control" ng-required="field.required"/>
+                        <span data-ng-show="{{'formLeft.'+field.name+'.$dirty && formLeft.'+field.name+'.$error.required'}}">Required!</span>
+                     </div>
+                     <!-- PASSWORD FIELDS -->
+                     <div ng-if="field.type=='password'" class="form-group">
+                        <label class="control-label" for="{{ field.label }}" translate>{{ field.label}}</label>
+                        <input type="{{ field.type }}" name="{{ field.name }}" id="{{field.name}}" data-ng-model="field.data"  class="form-control" ng-required="field.required"/>
+                        <span data-ng-show="{{'formLeft.'+field.name+'.$dirty && formLeft.'+field.name+'.$error.required'}}">Required!</span>
+                     </div>
+                     <!-- EMAIL FIELDS -->
+                     <div ng-if="field.type=='email'" class="form-group">
+                        <label for="{{ field.label }}" translate>{{ field.label }}</label>
+                        <input type="{{ field.type }}" name="{{ field.name }}" id="{{field.name}}" data-ng-model="field.data"  class="form-control" ng-required="field.required"/>
+                        <span data-ng-show="{{'formLeft.'+field.name+'.$dirty && formLeft.'+field.name+'.$error.required'}}">Required!</span>
+                        <span data-ng-show="{{'formLeft.'+field.name+'.$dirty && formLeft.'+field.name+'.$error.email'}}">Not email!</span>
+                     </div>
+                     </ng-form>
                 </div>
-                <div class="col-xs-6">
-                    <div class="form-group">
-                        <label for="email" translate>Email</label>
-                        <input name="email" class="form-control"
-                               type="email"
-                               ng-model="User.email">
-                    </div>
-                    <div class="form-group">
-                        <label for="phone" translate>Phone</label>
-                        <input name="phone" class="form-control"
-                               ng-model="User.phone">
-                    </div>
-                    <div class="form-group">
-                        <label for="mobile" translate>Mobile</label>
-                        <input name="mobile" class="form-control"
-                               ng-model="User.mobile">
-                    </div>
-                    <div class="form-group">
-                        <label for="password" translate>Password</label>
-                        <input type="password" name="password"
-                               class="form-control" ng-model="User.password">
-                    </div>
+            </div>
+             <div class="col-xs-6">
+                 <div ng-repeat="field in rightColumn">
+                     <ng-form name="formRight">
+                     <!-- TEXT FIELDS -->
+                     <div ng-if="field.type=='text'" class="form-group">
+                        <label for="{{ field.label }}" translate>{{ field.label }}</label>
+                        <input type="{{ field.type }}" name="{{ field.name }}" id="{{field.name}}" data-ng-model="field.data" class="form-control" ng-required="field.required"/>
+                        <span data-ng-show="{{'formRight.'+field.name+'.$dirty && formRight.'+field.name+'.$error.required'}}">Required!</span>
+                     </div>
+                     <!-- PASSWORD FIELDS -->
+                     <div ng-if="field.type=='password'" class="form-group">
+                        <label class="control-label" for="{{ field.label }}" translate>{{ field.label}}</label>
+                        <input type="{{ field.type }}" name="{{ field.name }}" id="{{field.name}}" data-ng-model="field.data"  class="form-control" ng-required="field.required"/>
+                        <span data-ng-show="{{'formRight.'+field.name+'.$dirty && formRight.'+field.name+'.$error.required'}}">Required!</span>
+                     </div>
+                     <!-- EMAIL FIELDS -->
+                     <div ng-if="field.type=='email'" class="form-group">
+                        <label for="{{ field.label }}" translate>{{ field.label }}</label>
+                        <input type="{{ field.type }}" name="{{ field.name }}" id="{{field.name}}" data-ng-model="field.data"  class="form-control" ng-required="field.required"/>
+                        <span data-ng-show="{{'formRight.'+field.name+'.$dirty && formRight.'+field.name+'.$error.required'}}">Required!</span>
+                        <span data-ng-show="{{'formRight.'+field.name+'.$dirty && formRight.'+field.name+'.$error.email'}}">Not email!</span>
+                     </div>
+                     </ng-form>
                 </div>
+            </div>
             </div>
 
             <div class="text-center">
                 <button ng-click="createUser()" class="btn btn-primary"
-                        ng-disabled="formAddUser.$invalid">
+                        ng-disabled="User.$invalid">
                     <span class="glyphicon glyphicon-edit"></span>
                     <span translate>Save user</span>
                 </button>
