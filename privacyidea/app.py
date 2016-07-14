@@ -49,6 +49,7 @@ from privacyidea.api.radiusserver import radiusserver_blueprint
 from privacyidea.api.recover import recover_blueprint
 from privacyidea.api.event import eventhandling_blueprint
 from privacyidea.api.smsgateway import smsgateway_blueprint
+from privacyidea.test.e2e import angulartesting_blueprint
 from privacyidea.lib.log import DEFAULT_LOGGING_CONFIG
 from privacyidea.config import config
 from privacyidea.models import db
@@ -185,6 +186,10 @@ def create_app(config_name="development",
         else:
             sys.stderr.write("No PI_LOGFILE found. Using default config.\n")
             logging.config.dictConfig(DEFAULT_LOGGING_CONFIG)
+
+    # Register the route to AngularJS unittesting
+    if TESTING:
+        app.register_blueprint(angulartesting_blueprint, url_prefix='/test/e2e')
 
     return app
 
