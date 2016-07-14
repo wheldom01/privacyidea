@@ -1,5 +1,15 @@
+<style type="text/css">
+  .css-form input.ng-invalid.ng-touched {
+    background-color: #FA787E;
+  }
+
+  .css-form input.ng-valid.ng-touched {
+    background-color: #78FA89;
+  }
+</style>
+
 <div class="panel" ng-controller="userAddController">
-    <form name="User" role="form" validate>
+    <form name="User" role="form" novalidate>
         <h2 translate>Add a new user</h2>
 
         <div ng-show="formInit.resolvernames.length">
@@ -26,53 +36,17 @@
 
              <div class="col-xs-6" ng-show"resolvername">
                  <div ng-repeat="field in leftColumn">
-                     <ng-form name="formLeft">
-                     <!-- TEXT FIELDS -->
-                     <div ng-if="field.type=='text'" class="form-group">
-                        <label for="{{ field.label }}" translate>{{ field.label }}</label>
-                        <input type="{{ field.type }}" name="{{ field.name }}" id="{{field.name}}" data-ng-model="field.data" class="form-control" ng-required="field.required"/>
-                        <span data-ng-show="{{'formLeft.'+field.name+'.$dirty && formLeft.'+field.name+'.$error.required'}}">Required!</span>
-                     </div>
-                     <!-- PASSWORD FIELDS -->
-                     <div ng-if="field.type=='password'" class="form-group">
-                        <label class="control-label" for="{{ field.label }}" translate>{{ field.label}}</label>
-                        <input type="{{ field.type }}" name="{{ field.name }}" id="{{field.name}}" data-ng-model="field.data"  class="form-control" ng-required="field.required"/>
-                        <span data-ng-show="{{'formLeft.'+field.name+'.$dirty && formLeft.'+field.name+'.$error.required'}}">Required!</span>
-                     </div>
-                     <!-- EMAIL FIELDS -->
-                     <div ng-if="field.type=='email'" class="form-group">
-                        <label for="{{ field.label }}" translate>{{ field.label }}</label>
-                        <input type="{{ field.type }}" name="{{ field.name }}" id="{{field.name}}" data-ng-model="field.data"  class="form-control" ng-required="field.required"/>
-                        <span data-ng-show="{{'formLeft.'+field.name+'.$dirty && formLeft.'+field.name+'.$error.required'}}">Required!</span>
-                        <span data-ng-show="{{'formLeft.'+field.name+'.$dirty && formLeft.'+field.name+'.$error.email'}}">Not email!</span>
-                     </div>
+                     <ng-form name="formLeft" class="css-form">
+                         <ng-include src="instanceUrl+'/static/components/user/views/user.add.dynamic.form.fields.html'"></ng-include>
                      </ng-form>
-                </div>
-            </div>
+                 </div>
+             </div>
              <div class="col-xs-6">
                  <div ng-repeat="field in rightColumn">
-                     <ng-form name="formRight">
-                     <!-- TEXT FIELDS -->
-                     <div ng-if="field.type=='text'" class="form-group">
-                        <label for="{{ field.label }}" translate>{{ field.label }}</label>
-                        <input type="{{ field.type }}" name="{{ field.name }}" id="{{field.name}}" data-ng-model="field.data" class="form-control" ng-required="field.required"/>
-                        <span data-ng-show="{{'formRight.'+field.name+'.$dirty && formRight.'+field.name+'.$error.required'}}">Required!</span>
-                     </div>
-                     <!-- PASSWORD FIELDS -->
-                     <div ng-if="field.type=='password'" class="form-group">
-                        <label class="control-label" for="{{ field.label }}" translate>{{ field.label}}</label>
-                        <input type="{{ field.type }}" name="{{ field.name }}" id="{{field.name}}" data-ng-model="field.data"  class="form-control" ng-required="field.required"/>
-                        <span data-ng-show="{{'formRight.'+field.name+'.$dirty && formRight.'+field.name+'.$error.required'}}">Required!</span>
-                     </div>
-                     <!-- EMAIL FIELDS -->
-                     <div ng-if="field.type=='email'" class="form-group">
-                        <label for="{{ field.label }}" translate>{{ field.label }}</label>
-                        <input type="{{ field.type }}" name="{{ field.name }}" id="{{field.name}}" data-ng-model="field.data"  class="form-control" ng-required="field.required"/>
-                        <span data-ng-show="{{'formRight.'+field.name+'.$dirty && formRight.'+field.name+'.$error.required'}}">Required!</span>
-                        <span data-ng-show="{{'formRight.'+field.name+'.$dirty && formRight.'+field.name+'.$error.email'}}">Not email!</span>
-                     </div>
+                     <ng-form name="formLeft" class="css-form">
+                         <ng-include src="instanceUrl+'/static/components/user/views/user.add.dynamic.form.fields.html'"></ng-include>
                      </ng-form>
-                </div>
+                 </div>
             </div>
             </div>
 

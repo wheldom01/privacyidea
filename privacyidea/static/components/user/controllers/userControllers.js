@@ -2,6 +2,11 @@
  * http://www.privacyidea.org
  * (c) cornelius kölbel, cornelius@privacyidea.org
  *
+ * 2016-04-10 Martin Wheldon <martin.wheldon@greenhills-it.co.uk>
+ *           On initialisation generate object describing the fields
+ *           required by the add user form for each resolver.
+ *           Add function to update form on switching of resolver
+ *           on the add user form.
  * 2015-01-11 Cornelius Kölbel, <cornelius@privacyidea.org>
  *
  * This code is free software; you can redistribute it and/or
