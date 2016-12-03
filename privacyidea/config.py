@@ -58,6 +58,7 @@ class ProductionConfig(Config):
     PI_LOGLEVEL = logging.WARNING
     PI_LOGLEVEL = 9
     SUPERUSER_REALM = ['superuser']
+    TESTING = True
 
 
 class HerokuConfig(Config):

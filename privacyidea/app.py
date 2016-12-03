@@ -188,8 +188,10 @@ def create_app(config_name="development",
             logging.config.dictConfig(DEFAULT_LOGGING_CONFIG)
 
     # Register the route to AngularJS unittesting
-    if TESTING:
-        app.register_blueprint(angulartesting_blueprint, url_prefix='/test/e2e')
+    enable_e2e_testing = app.config.get("TESTING")
+    if enable_e2e_testing:
+        sys.stderr.write("Enabled AngularJS e2e testing routes\n")
+        app.register_blueprint(angulartesting_blueprint, url_prefix='/test')
 
     return app
 
