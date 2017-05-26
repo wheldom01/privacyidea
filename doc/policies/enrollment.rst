@@ -66,10 +66,15 @@ The default behaviour is to use the serial number.
 
 .. note:: This is useful to identify the token in the Authenticator App.
 
-.. warning:: If you are only using <u> as tokenlabel and you enroll the token
-   without a user, this will result in an invalid QR code, since it will have
-   an empty label. You should rather use a label like "user: <u>", which would
-   result in "user: ".
+.. note:: Starting with version 2.19 the usage of ``<u>``, ``<s>`` and ``<r>``
+   is deprecated. Instead you should use ``{user}``, ``{realm}``,
+   ``{serial}`` and as new tags ``{givenname}`` and ``{surname}``.
+
+.. warning:: If you are only using ``<u>`` or ``{user}`` as tokenlabel and you
+   enroll the token without a user, this will result in an invalid QR code,
+   since it will have an empty label.
+   You should rather use a label like "{user}@{realm}",
+   which would result in "@".
 
 
 .. _autoassignment:
@@ -224,4 +229,27 @@ You can add two access codes separated by a colon to change from one access code
    313233343536:414243444546
 
 
+papertoken_count
+~~~~~~~~~~~~~~~~
 
+type: int
+
+This is a specific action of the paper token. Here the administrator can
+define how many OTP values should be printed on the paper token.
+
+
+u2f_req
+~~~~~~~
+
+type: string
+
+Only the specified U2F devices are allowed to be registered.
+The action can be specified like this:
+
+    u2f_req=subject/.*Yubico.*/
+
+The the key word can be "subject", "issuer" or "serial". Followed by a
+regular expression. During registration of the U2F device the information
+is fetched from the attestation certificate.
+Only if the attribute in the attestation certificate matches accordingly the
+token can be registered.

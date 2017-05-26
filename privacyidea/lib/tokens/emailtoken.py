@@ -66,7 +66,7 @@ from privacyidea.lib.config import get_from_config
 from privacyidea.api.lib.utils import getParam
 from privacyidea.lib.policy import SCOPE
 from privacyidea.lib.log import log_with
-from gettext import gettext as _
+from privacyidea.lib import _
 from privacyidea.models import Challenge
 from privacyidea.lib.decorators import check_token_locked
 from privacyidea.lib.smtpserver import send_email_data, send_email_identifier
@@ -93,6 +93,7 @@ class EmailTokenClass(HotpTokenClass):
     def __init__(self, aToken):
         HotpTokenClass.__init__(self, aToken)
         self.set_type(u"email")
+        self.mode = ['challenge']
         # we support various hashlib methods, but only on create
         # which is effectively set in the update
         self.hashlibStr = get_from_config("hotp.hashlib", "sha1")
@@ -157,8 +158,8 @@ class EmailTokenClass(HotpTokenClass):
            }
         }
 
-        if key is not None and key in res:
-            ret = res.get(key)
+        if key:
+            ret = res.get(key, {})
         else:
             if ret == 'all':
                 ret = res

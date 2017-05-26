@@ -24,7 +24,7 @@ import os.path
 import logging
 import logging.config
 import sys
-from flask import Flask
+from flask import Flask, request
 
 import privacyidea.api.before_after
 from privacyidea.api.validate import validate_blueprint
@@ -56,6 +56,8 @@ from privacyidea.lib.log import DEFAULT_LOGGING_CONFIG
 from privacyidea.config import config
 from privacyidea.models import db
 from flask.ext.migrate import Migrate
+from flask_babel import Babel
+
 
 ENV_KEY = "PRIVACYIDEA_CONFIGFILE"
 MY_LOG_FORMAT = "[%(asctime)s][%(process)d][%(thread)d][%(levelname)s][%(" \
@@ -162,6 +164,7 @@ def create_app(config_name="development",
     db.init_app(app)
     migrate = Migrate(app, db)
 
+
     try:
         # Try to read logging config from file
         log_config_file = app.config.get("PI_LOGCONFIG",
@@ -174,22 +177,36 @@ def create_app(config_name="development",
             raise Exception("The config file specified in PI_LOGCONFIG does "
                             "not exist.")
     except Exception as exx:
-        sys.stderr.write("{0!s}\n".format(exx))
-        sys.stderr.write("Could not use PI_LOGCONFIG. "
-                         "Using PI_LOGLEVEL and PI_LOGFILE.\n")
+        if not silent:
+            sys.stderr.write("{0!s}\n".format(exx))
+            sys.stderr.write("Could not use PI_LOGCONFIG. "
+                             "Using PI_LOGLEVEL and PI_LOGFILE.\n")
         level = app.config.get("PI_LOGLEVEL", logging.DEBUG)
         # If there is another logfile in pi.cfg we use this.
         logfile = app.config.get("PI_LOGFILE")
         if logfile:
-            sys.stderr.write("Using PI_LOGLEVEL {0!s}.\n".format(level))
-            sys.stderr.write("Using PI_LOGFILE {0!s}.\n".format(logfile))
+            if not silent:
+                sys.stderr.write("Using PI_LOGLEVEL {0!s}.\n".format(level))
+                sys.stderr.write("Using PI_LOGFILE {0!s}.\n".format(logfile))
             PI_LOGGING_CONFIG["handlers"]["file"]["filename"] = logfile
             PI_LOGGING_CONFIG["handlers"]["file"]["level"] = level
             PI_LOGGING_CONFIG["loggers"]["privacyidea"]["level"] = level
             logging.config.dictConfig(PI_LOGGING_CONFIG)
         else:
-            sys.stderr.write("No PI_LOGFILE found. Using default config.\n")
+            if not silent:
+                sys.stderr.write("No PI_LOGFILE found. Using default "
+                                  "config.\n")
             logging.config.dictConfig(DEFAULT_LOGGING_CONFIG)
+
+    babel = Babel(app)
+
+    @babel.localeselector
+    def get_locale():
+        # otherwise try to guess the language from the user accept
+        # header the browser transmits.  We support de/fr/en in this
+        # example.  The best match wins.
+        return request.accept_languages.best_match(['de',
+                                                    'fr', 'it', 'es', 'en'])
 
     return app
 

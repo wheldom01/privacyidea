@@ -28,7 +28,7 @@ Alternatively you can install privacyIDEA running in an Apache webserver::
 After installing in Nginx or Apache2 you only need to create your first
 administrator and you are done::
 
-   pi-manage admin add admin admin@localhost
+   pi-manage admin add admin -e admin@localhost
 
 
 Now you may proceed to :ref:`first_steps`.
@@ -55,7 +55,7 @@ To install this module run::
 
    apt-get install privacyidea-radius
 
-For further details see :ref:`freeradius_plugin`.
+For further details see :ref:`rlm_perl`.
 
 .. _install_ubuntu_simplesaml:
 

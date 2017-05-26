@@ -20,14 +20,19 @@ using :ref:`code_policy` and
 The following actions are available in the scope 
 *authorization*:
 
+.. _tokentype_policy:
+
 tokentype
 ~~~~~~~~~
 
 type: string
 
 Users will only be authorized with this very tokentype.
-The string can hold a comma separated list of
-case insensitive tokentypes.
+The string can hold a space separated list of
+case sensitive tokentypes. It should look like:
+
+    hotp totp spass
+
 
 This is checked after the authentication request, so that a valid OTP value
 is wasted, so that it can not be used, even if the user was not authorized at
@@ -100,6 +105,8 @@ the authentication request failed.
 
 If this action is set and the user fails to authenticate
 this additional information will not be returned.
+
+.. _policy_api_key:
 
 api_key_required
 ~~~~~~~~~~~~~~~~
@@ -180,3 +187,30 @@ if the token was not successfully used for 12 hours, 123 days or 2 years.
 
 The date of the last successful authentication is store in the `tokeninfo`
 field of a token and denoted in UTC.
+
+u2f_req
+~~~~~~~
+
+type: string
+
+Only the specified U2F devices are authorized to authenticate.
+The administrator can specify the action like this:
+
+    u2f_req=subject/.*Yubico.*/
+
+The the key word can be "subject", "issuer" or "serial". Followed by a
+regular expression. During registration of the U2F device the information
+from the attestation certificate is stored in the tokeninfo.
+Only if the regexp matches this value, the authentication with such U2F
+device is authorized.
+
+.. _policy_add_user_in_response:
+
+add_user_in_response
+~~~~~~~~~~~~~~~~~~~~
+
+type: bool
+
+In case of a successful authentication additional user information is added
+to the response. A dictionary containing user information is added in
+``detail->user``.

@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 #
+#  2017-04-19 Cornelius Kölbel <cornelius.koelbel@netknights.it>
+#             Add support for multiple challenge response token
 #  2016-02-19 Cornelius Kölbel <cornelius@privacyidea.org>
 #             Add radiusserver table
 #  2015-08-27 Cornelius Kölbel <cornelius@privacyidea.org>
@@ -476,6 +478,7 @@ class Token(MethodsMixin, db.Model):
         ret['count'] = self.count
         ret['count_window'] = self.count_window
         ret['sync_window'] = self.sync_window
+        ret['rollout_state'] = self.rollout_state
         # list of Realm names
         realm_list = []
         for realm_entry in self.realm_list:
@@ -1097,13 +1100,12 @@ class Challenge(MethodsMixin, db.Model):
     """
     __tablename__ = "challenge"
     id = db.Column(db.Integer(), primary_key=True, nullable=False)
-    transaction_id = db.Column(db.Unicode(64), unique=True, nullable=False,
-                               index=True)
+    transaction_id = db.Column(db.Unicode(64), nullable=False, index=True)
     data = db.Column(db.Unicode(512), default=u'')
     challenge = db.Column(db.Unicode(512), default=u'')
     session = db.Column(db.Unicode(512), default=u'')
     # The token serial number
-    serial = db.Column(db.Unicode(40), default=u'')
+    serial = db.Column(db.Unicode(40), default=u'', index=True)
     timestamp = db.Column(db.DateTime, default=datetime.now())
     expiration = db.Column(db.DateTime)
     received_count = db.Column(db.Integer(), default=0)
@@ -1249,6 +1251,7 @@ class Policy(TimestampMethodsMixin, db.Model):
     __tablename__ = "policy"
     id = db.Column(db.Integer, primary_key=True)
     active = db.Column(db.Boolean, default=True)
+    check_all_resolvers = db.Column(db.Boolean, default=False)
     name = db.Column(db.Unicode(64), unique=True, nullable=False)
     scope = db.Column(db.Unicode(32), nullable=False)
     action = db.Column(db.Unicode(2000), default=u"")
@@ -1262,7 +1265,8 @@ class Policy(TimestampMethodsMixin, db.Model):
     
     def __init__(self, name,
                  active=True, scope="", action="", realm="", adminrealm="",
-                 resolver="", user="", client="", time="", condition=0):
+                 resolver="", user="", client="", time="", condition=0,
+                 check_all_resolvers=False):
         if type(active) in [str, unicode]:
             if active.lower() in ["true", "1"]:
                 active = True
@@ -1279,6 +1283,7 @@ class Policy(TimestampMethodsMixin, db.Model):
         self.client = client
         self.time = time
         self.condition = condition
+        self.check_all_resolvers = check_all_resolvers
 
     @staticmethod
     def _split_string(value):
@@ -1310,6 +1315,7 @@ class Policy(TimestampMethodsMixin, db.Model):
              "realm": self._split_string(self.realm),
              "adminrealm": self._split_string(self.adminrealm),
              "resolver": self._split_string(self.resolver),
+             "check_all_resolvers": self.check_all_resolvers,
              "user": self._split_string(self.user),
              "client": self._split_string(self.client),
              "time": self.time,
@@ -1891,7 +1897,7 @@ class SMSGateway(MethodsMixin, db.Model):
         # delete non existing options in case of update
         if sql:
             for option in sql.option_dict.keys():
-                # iterate throuhg all existing options
+                # iterate through all existing options
                 if option not in options:
                     # if the option is not contained anymore
                     SMSGatewayOption.query.filter_by(gateway_id=self.id,
@@ -2163,8 +2169,8 @@ class Subscription(MethodsMixin, db.Model):
     """
     __tablename__ = 'subscription'
     id = db.Column(db.Integer, primary_key=True, index=True)
-    application = db.Column(db.Unicode(30), index=True)
-    for_name = db.Column(db.Unicode(50), nullable=False)
+    application = db.Column(db.Unicode(80), index=True)
+    for_name = db.Column(db.Unicode(80), nullable=False)
     for_address = db.Column(db.Unicode(128))
     for_email = db.Column(db.Unicode(128), nullable=False)
     for_phone = db.Column(db.Unicode(50), nullable=False)
@@ -2180,7 +2186,7 @@ class Subscription(MethodsMixin, db.Model):
     num_users = db.Column(db.Integer)
     num_tokens = db.Column(db.Integer)
     num_clients = db.Column(db.Integer)
-    level = db.Column(db.Unicode(30))
+    level = db.Column(db.Unicode(80))
     signature = db.Column(db.Unicode(640))
 
     def save(self):
@@ -2247,7 +2253,7 @@ class Audit(MethodsMixin, db.Model):
     success = db.Column(db.Integer)
     serial = db.Column(db.String(audit_column_length.get("serial")))
     token_type = db.Column(db.String(audit_column_length.get("token_type")))
-    user = db.Column(db.String(audit_column_length.get("user")))
+    user = db.Column(db.String(audit_column_length.get("user")), index=True)
     realm = db.Column(db.String(audit_column_length.get("realm")))
     resolver = db.Column(db.String(audit_column_length.get("resolver")))
     administrator = db.Column(
@@ -2294,3 +2300,19 @@ class Audit(MethodsMixin, db.Model):
         self.client = client
         self.loglevel = loglevel
         self.clearance_level = clearance_level
+
+### User Cache
+
+class UserCache(MethodsMixin, db.Model):
+    __tablename__ = 'usercache'
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.Unicode(64), default=u"", index=True)
+    resolver = db.Column(db.Unicode(120), default=u'')
+    user_id = db.Column(db.Unicode(320), default=u'', index=True)
+    timestamp = db.Column(db.DateTime)
+
+    def __init__(self, username, resolver, user_id, timestamp):
+        self.username = username
+        self.resolver = resolver
+        self.user_id = user_id
+        self.timestamp = timestamp

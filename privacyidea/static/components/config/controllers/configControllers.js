@@ -168,6 +168,7 @@ myApp.controller("policyDetailsController", function($scope, $stateParams,
             resolver: "",
             user: "",
             active: true,
+            check_all_resolvers: false,
             client: "",
             time: ""
         };
@@ -187,12 +188,15 @@ myApp.controller("policyDetailsController", function($scope, $stateParams,
         var actions = $scope.policyDefs[scope];
         console.log(actions);
         $scope.actions = [];
+        $scope.actionGroups = [];
         $scope.isActionValues = false;
 
         angular.forEach(actions, function(value, key) {
-            // TODO: we might evaluate value.group and group the actions
-            //$scope.actions.push({name: "GroupName", multiSelectGroup: true})
-            //$scope.actions.push({multiSelectGroup: false})
+            // we might evaluate value.group and group the actions
+            if ($scope.actionGroups.indexOf(value.group) < 0) {
+                // build a list of all groups
+                $scope.actionGroups.push(value.group);
+            }
             // Check the given policy actions
             var ticked = false;
             if (policyActions && policyActions[key] === true) {
@@ -218,6 +222,7 @@ myApp.controller("policyDetailsController", function($scope, $stateParams,
                 $scope.actions.push({name: key,
                                      type: value.type,
                                      desc: value.desc,
+                                     group: value.group,
                                      allowedValues: value.value});
                 // preset the fields
                 if (policyActions && policyActions[key]) {
@@ -315,6 +320,7 @@ myApp.controller("policyDetailsController", function($scope, $stateParams,
             // fill $scope.params
             $scope.params.user = policy.user;
             $scope.params.active = policy.active;
+            $scope.params.check_all_resolvers = policy.check_all_resolvers;
             $scope.params.client = policy.client;
             $scope.params.time = policy.time;
             // tick the realms and the resolvers
@@ -829,7 +835,7 @@ myApp.controller("LdapResolverController", function ($scope, ConfigFactory, $sta
     /*
      BINDDN, BINDPW, LDAPURI, TIMEOUT, LDAPBASE, LOGINNAMEATTRIBUTE,
      LDAPSEARCHFILTER,
-     LDAPFILTER, USERINFO, SIZELIMIT, NOREFERRALS, CACERTIFICATE, AUTHTYPE, EDITABLE
+     USERINFO, SIZELIMIT, NOREFERRALS, CACERTIFICATE, AUTHTYPE, EDITABLE
      */
     $scope.params = {
         SIZELIMIT: 500,
@@ -837,7 +843,11 @@ myApp.controller("LdapResolverController", function ($scope, ConfigFactory, $sta
         UIDTYPE: "DN",
         type: 'ldapresolver',
         AUTHTYPE: "Simple",
-        SCOPE: "SUBTREE"
+        SCOPE: "SUBTREE",
+        CACHE_TIMEOUT: 120,
+        NOSCHEMAS: false,
+        TLS_VERIFY: true,
+        START_TLS: true
     };
     $scope.result = {};
     $scope.resolvername = $stateParams.resolvername;
@@ -853,6 +863,9 @@ myApp.controller("LdapResolverController", function ($scope, ConfigFactory, $sta
             $scope.params = resolver.data;
             $scope.params.NOREFERRALS = isTrue($scope.params.NOREFERRALS);
             $scope.params.EDITABLE = isTrue($scope.params.EDITABLE);
+            $scope.params.TLS_VERIFY = isTrue($scope.params.TLS_VERIFY);
+            $scope.params.START_TLS = isTrue($scope.params.START_TLS);
+            $scope.params.NOSCHEMAS = isTrue($scope.params.NOSCHEMAS);
             $scope.params.type = 'ldapresolver';
         });
     }
@@ -860,8 +873,7 @@ myApp.controller("LdapResolverController", function ($scope, ConfigFactory, $sta
     $scope.presetAD = function () {
         $scope.params.LOGINNAMEATTRIBUTE = "sAMAccountName";
         $scope.params.LDAPSEARCHFILTER = "(sAMAccountName=*)(objectClass=person)";
-        $scope.params.LDAPFILTER = "(&(sAMAccountName=%s)(objectClass=person))";
-        $scope.params.USERINFO = '{ "username": "sAMAccountName", "phone" : "telephoneNumber", "mobile" : "mobile", "email" : "mail", "surname" : "sn", "givenname" : "givenName" }';
+        $scope.params.USERINFO = '{ "phone" : "telephoneNumber", "mobile" : "mobile", "email" : "mail", "surname" : "sn", "givenname" : "givenName" }';
         $scope.params.NOREFERRALS = true;
         $scope.params.EDITABLE = false;
         $scope.params.SIZELIMIT = 500;
@@ -873,8 +885,7 @@ myApp.controller("LdapResolverController", function ($scope, ConfigFactory, $sta
     $scope.presetLDAP = function () {
         $scope.params.LOGINNAMEATTRIBUTE = "uid";
         $scope.params.LDAPSEARCHFILTER = "(uid=*)(objectClass=inetOrgPerson)";
-        $scope.params.LDAPFILTER = "(&(uid=%s)(objectClass=inetOrgPerson))";
-        $scope.params.USERINFO = '{ "username": "uid", "phone" : "telephoneNumber", "mobile" : "mobile", "email" : "mail", "surname" : "sn", "givenname" : "givenName" }';
+        $scope.params.USERINFO = '{ "phone" : "telephoneNumber", "mobile" : "mobile", "email" : "mail", "surname" : "sn", "givenname" : "givenName" }';
         $scope.params.NOREFERRALS = true;
         $scope.params.EDITABLE = false;
         $scope.params.SIZELIMIT = 500;
@@ -891,8 +902,10 @@ myApp.controller("LdapResolverController", function ($scope, ConfigFactory, $sta
         });
     };
 
-    $scope.testResolver = function () {
-        ConfigFactory.testResolver($scope.params, function (data) {
+    $scope.testResolver = function (size_limit) {
+        var params = $.extend({}, $scope.params);
+        params["SIZELIMIT"] = size_limit;
+        ConfigFactory.testResolver(params, function (data) {
             if (data.result.value === true) {
                 inform.add(data.detail.description,
                     {type: "success", ttl: 10000});

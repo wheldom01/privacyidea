@@ -41,14 +41,11 @@ token database.
 import logging
 from privacyidea.lib.auditmodules.base import (Audit as AuditBase, Paginate)
 from privacyidea.lib.crypto import Sign
-from sqlalchemy import Table, MetaData, Column
-from sqlalchemy import Integer, String, DateTime, asc, desc, and_
-from sqlalchemy.orm import mapper
-from alembic.migration import MigrationContext
-from alembic.operations import Operations
+from sqlalchemy import MetaData
+from sqlalchemy import asc, desc, and_, or_
 import datetime
 import traceback
-from sqlalchemy.exc import OperationalError
+
 
 log = logging.getLogger(__name__)
 try:
@@ -127,10 +124,19 @@ class Audit(AuditBase):
         create a filter condition for the logentry
         """
         conditions = []
+        param = param or {}
         for search_key in param.keys():
             search_value = param.get(search_key)
+            if search_key == "allowed_audit_realm":
+                # Add each realm in the allowed_audit_realm list to the
+                # search condition
+                realm_conditions = []
+                for realm in search_value:
+                    realm_conditions.append(LogEntry.realm == realm)
+                filter_realm = or_(*realm_conditions)
+                conditions.append(filter_realm)
             # We do not search if the search value only consists of '*'
-            if search_value.strip() != '' and search_value.strip('*') != '':
+            elif search_value.strip() != '' and search_value.strip('*') != '':
                 try:
                     if search_key == "success":
                         # "success" is the only integer.
@@ -337,7 +343,7 @@ class Audit(AuditBase):
                     'clearance_level': LogEntry.clearance_level}
         return sortname.get(key)
 
-    def csv_generator(self, param=None, user=None):
+    def csv_generator(self, param=None, user=None, timelimit=None):
         """
         Returns the audit log as csv file.
         :param config: The current flask app configuration
@@ -347,7 +353,9 @@ class Audit(AuditBase):
         :param user: The user, who issued the request
         :return: None. It yields results as a generator
         """
-        logentries = self.session.query(LogEntry).all()
+        filter_condition = self._create_filter(param,
+                                               timelimit=timelimit)
+        logentries = self.session.query(LogEntry).filter(filter_condition).all()
 
         for le in logentries:
             audit_dict = self.audit_entry_to_dict(le)
@@ -467,12 +475,13 @@ class Audit(AuditBase):
             log.warning("If you want to use statistics, you need to install "
                         "python-pandas.")
             return None
-        result = self.engine.execute("select * from %s where date "
-                                     "> '%s' and date < "
-                                     "'%s'"
-                                     % (TABLE_NAME, start_time, end_time))
-        rows = result.fetchall()
-        df = DataFrame(rows, columns=result.keys())
+
+        q = self.session.query(LogEntry)\
+            .filter(LogEntry.date > start_time,
+                    LogEntry.date < end_time)
+        rows = q.all()
+        rows = [r.__dict__ for r in rows]
+        df = DataFrame(rows)
         return df
 
     def clear(self):

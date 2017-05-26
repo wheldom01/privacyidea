@@ -1,9 +1,13 @@
 # -*- coding: utf-8 -*-
 #
+#  2017-04-18 Cornelius Kölbel <cornelius.koelbel@netknights.it>
+#             Save attestation cert info to tokeninfo
 #  2015-11-22 Cornelius Kölbel <cornelius@privacyidea.org>
 #             Adding dynamic facet list
 #
 #  http://www.privacyidea.org
+#  2017-04-22 Cornelius Kölbel <cornelius.koelbel@netknights.it>
+#             Add policies of attestation certificate
 #  2015-09-21 Initial writeup.
 #             Cornelius Kölbel <cornelius@privacyidea.org>
 #
@@ -27,17 +31,19 @@ from privacyidea.lib.tokenclass import TokenClass
 from privacyidea.lib.log import log_with
 import logging
 from privacyidea.models import Challenge
-import gettext
+from privacyidea.lib import _
 from privacyidea.lib.decorators import check_token_locked
 from privacyidea.lib.crypto import geturandom
 from privacyidea.lib.tokens.u2f import (check_registration_data, url_decode,
                                         parse_registration_data, url_encode,
-                                        parse_response_data, check_response)
-from privacyidea.lib.error import ValidateError
+                                        parse_response_data, check_response,
+                                        x509name_to_string)
+from privacyidea.lib.error import ValidateError, PolicyError
 from privacyidea.lib.policy import SCOPE
 import base64
 import binascii
 import json
+import re
 
 __doc__ = """
 U2F is the "Universal 2nd Factor" specified by the FIDO Alliance.
@@ -179,11 +185,11 @@ U2F_Version = "U2F_V2"
 log = logging.getLogger(__name__)
 optional = True
 required = False
-_ = gettext.gettext
 
 
 class U2FACTION(object):
     FACETS = "u2f_facets"
+    REQ = "u2f_req"
 
 
 class U2fTokenClass(TokenClass):
@@ -236,12 +242,26 @@ class U2fTokenClass(TokenClass):
                            'type': 'str',
                            'desc': _("This is a list of FQDN hostnames "
                                      "trusting the registered U2F tokens.")}
+                   },
+                   SCOPE.AUTHZ: {
+                       U2FACTION.REQ: {
+                           'type': 'str',
+                           'desc': _("Only specified U2F tokens are "
+                                     "authorized.")
+                       }
+                   },
+                   SCOPE.ENROLL: {
+                       U2FACTION.REQ: {
+                           'type': 'str',
+                           'desc': _("Only specified U2F tokens are allowed "
+                                     "to be registered.")
+                       }
                    }
                }
                }
 
-        if key is not None and key in res:
-            ret = res.get(key)
+        if key:
+            ret = res.get(key, {})
         else:
             if ret == 'all':
                 ret = res
@@ -284,7 +304,17 @@ class U2fTokenClass(TokenClass):
                                     user_pub_key, key_handle, signature)
             self.set_otpkey(key_handle)
             self.add_tokeninfo("pubKey", user_pub_key)
+            # add attestation certificat info
+            issuer = x509name_to_string(attestation_cert.get_issuer())
+            serial = "{!s}".format(attestation_cert.get_serial_number())
+            subject = x509name_to_string(attestation_cert.get_subject())
 
+            self.add_tokeninfo("attestation_issuer", issuer)
+            self.add_tokeninfo("attestation_serial", serial)
+            self.add_tokeninfo("attestation_subject", subject)
+
+        # If a description is given we use the given description
+        description = getParam(param, "description", default=description)
         self.set_description(description)
 
     @log_with(log)
@@ -295,7 +325,7 @@ class U2fTokenClass(TokenClass):
         response_detail = {}
         if self.init_step == 1:
             # This is the first step of the init request
-            app_id = get_from_config("u2f.appId").strip("/")
+            app_id = get_from_config("u2f.appId", "").strip("/")
             from privacyidea.lib.error import TokenAdminError
             if not app_id:
                 raise TokenAdminError(_("You need to define the appId in the "
@@ -421,7 +451,7 @@ class U2fTokenClass(TokenClass):
             client_challenge = clientdata_dict.get("challenge")
             if challenge_url != client_challenge:
                 raise ValidateError("Challenge mismatch. The U2F key did not "
-                                    "send to original challenge.")
+                                    "send the original challenge.")
             if clientdata_dict.get("typ") != "navigator.id.getAssertion":
                 raise ValidateError("Incorrect navigator.id")
             #client_origin = clientdata_dict.get("origin")
@@ -440,6 +470,38 @@ class U2fTokenClass(TokenClass):
                 if counter > self.get_otp_count():
                     self.set_otp_count(counter)
                     ret = counter
+                    # At this point we can check, if the attestation
+                    # certificate is authorized.
+                    # If not, we can raise a policy exception
+                    g = options.get("g")
+                    if self.user:
+                        token_user = self.user.login
+                        token_realm = self.user.realm
+                        token_resolver = self.user.resolver
+                    else:
+                        token_realm = token_resolver = token_user = None
+                    allowed_certs_pols = g.policy_object.get_action_values(
+                        U2FACTION.REQ,
+                        scope=SCOPE.AUTHZ,
+                        realm=token_realm,
+                        user=token_user,
+                        resolver=token_resolver,
+                        client=g.client_ip)
+                    for allowed_cert in allowed_certs_pols:
+                        tag, matching, _rest = allowed_cert.split("/", 3)
+                        tag_value = self.get_tokeninfo(
+                            "attestation_{0!s}".format(tag))
+                        # if we do not get a match, we bail out
+                        m = re.search(matching, tag_value)
+                        if not m:
+                            log.warning("The U2F device {0!s} is not "
+                                        "allowed to authenticate due to policy "
+                                        "restriction".format(
+                                self.token.serial))
+                            raise PolicyError("The U2F device is not allowed "
+                                              "to authenticate due to policy "
+                                              "restriction.")
+
                 else:
                     log.warning("The signature of %s was valid, but contained "
                                 "an old counter." % self.token.serial)

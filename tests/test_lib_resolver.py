@@ -27,6 +27,13 @@ from privacyidea.lib.resolver import (save_resolver,
                                       get_resolver_object, pretestresolver)
 from privacyidea.models import ResolverConfig
 
+objectGUIDs = [
+    '039b36ef-e7c0-42f3-9bf9-ca6a6c0d4d31',
+    '039b36ef-e7c0-42f3-9bf9-ca6a6c0d4d77',
+    '039b36ef-e7c0-42f3-9bf9-ca6a6c0d4d54'
+]
+
+
 LDAPDirectory = [{"dn": "cn=alice,ou=example,o=test",
                  "attributes": {'cn': 'alice',
                                 "sn": "Cooper",
@@ -36,8 +43,7 @@ LDAPDirectory = [{"dn": "cn=alice,ou=example,o=test",
                                 "homeDirectory": "/home/alice",
                                 "email": "alice@test.com",
                                 "accountExpires": 131024988000000000,
-                                "objectGUID": '\xef6\x9b\x03\xc0\xe7\xf3B'
-                                              '\x9b\xf9\xcajl\rM1',
+                                "objectGUID": objectGUIDs[0],
                                 'mobile': ["1234", "45678"]}},
                 {"dn": 'cn=bob,ou=example,o=test',
                  "attributes": {'cn': 'bob',
@@ -48,8 +54,7 @@ LDAPDirectory = [{"dn": "cn=alice,ou=example,o=test",
                                 "homeDirectory": "/home/bob",
                                 'userPassword': 'bobpwééé',
                                 "accountExpires": 9223372036854775807,
-                                "objectGUID": '\xef6\x9b\x03\xc0\xe7\xf3B'
-                                              '\x9b\xf9\xcajl\rMw',
+                                "objectGUID": objectGUIDs[1],
                                 'oid': "3"}},
                 {"dn": 'cn=manager,ou=example,o=test',
                  "attributes": {'cn': 'manager',
@@ -59,8 +64,7 @@ LDAPDirectory = [{"dn": "cn=alice,ou=example,o=test",
                                 "mobile": "123354",
                                 'userPassword': 'ldaptest',
                                 "accountExpires": 9223372036854775807,
-                                "objectGUID": '\xef6\x9b\x03\xc0\xe7\xf3B'
-                                              '\x9b\xf9\xcajl\rMT',
+                                "objectGUID": objectGUIDs[2],
                                 'oid': "1"}}]
 
 LDAPDirectory_small = [{"dn": 'cn=bob,ou=example,o=test',
@@ -72,8 +76,7 @@ LDAPDirectory_small = [{"dn": 'cn=bob,ou=example,o=test',
                                 "homeDirectory": "/home/bob",
                                 'userPassword': 'bobpwééé',
                                 "accountExpires": 9223372036854775807,
-                                "objectGUID": '\xef6\x9b\x03\xc0\xe7\xf3B'
-                                              '\x9b\xf9\xcajl\rMw',
+                                "objectGUID": objectGUIDs[0],
                                 'oid': "3"}},
                 {"dn": 'cn=manager,ou=example,o=test',
                  "attributes": {'cn': 'manager',
@@ -83,8 +86,7 @@ LDAPDirectory_small = [{"dn": 'cn=bob,ou=example,o=test',
                                 "mobile": "123354",
                                 'userPassword': 'ldaptest',
                                 "accountExpires": 9223372036854775807,
-                                "objectGUID": '\xef6\x9b\x03\xc0\xe7\xf3B'
-                                              '\x9b\xf9\xcajl\rMT',
+                                "objectGUID": objectGUIDs[1],
                                 'oid': "1"}}
                        ]
 
@@ -474,8 +476,6 @@ class LDAPResolverTestCase(MyTestCase):
                                              'LOGINNAMEATTRIBUTE': 'cn',
                                              'LDAPSEARCHFILTER':
                                                  '(cn=*)',
-                                             'LDAPFILTER': '(&('
-                                                           'cn=%s))',
                                              'USERINFO': '{ '
                                                          '"username": "cn",'
                                                          '"phone" '
@@ -502,7 +502,6 @@ class LDAPResolverTestCase(MyTestCase):
                       'BINDPW': 'ldaptest',
                       'LOGINNAMEATTRIBUTE': 'cn',
                       'LDAPSEARCHFILTER': '(cn=*)',
-                      'LDAPFILTER': '(&(cn=%s))',
                       'USERINFO': '{ "username": "cn",'
                                   '"phone" : "telephoneNumber", '
                                   '"mobile" : "mobile"'
@@ -556,9 +555,7 @@ class LDAPResolverTestCase(MyTestCase):
                       'BINDPW': 'ldaptest',
                       'LOGINNAMEATTRIBUTE': 'cn',
                       'LDAPSEARCHFILTER': '(cn=*)',
-                      'LDAPFILTER': '(&(cn=%s))',
-                      'USERINFO': '{ "username": "email",'
-                                  '"phone" : "telephoneNumber", '
+                      'USERINFO': '{ "phone" : "telephoneNumber", '
                                   '"mobile" : "mobile"'
                                   ', "email" : "email", '
                                   '"surname" : "sn", '
@@ -571,10 +568,10 @@ class LDAPResolverTestCase(MyTestCase):
 
         user = "bob"
         user_id = y.getUserId(user)
-        self.assertTrue(user_id == "cn=bob,ou=example,o=test", user_id)
+        self.assertEqual("cn=bob,ou=example,o=test", user_id)
 
         rid = y.getResolverId()
-        self.assertTrue(rid == "c623ad4ec00e6f7249939de633fe94339bb4580d", rid)
+        self.assertEqual('8372b96a28ff8b4710f4aba838d5f9891ad4e381', rid)
 
         rtype = y.getResolverType()
         self.assertTrue(rtype == "ldapresolver", rtype)
@@ -585,8 +582,23 @@ class LDAPResolverTestCase(MyTestCase):
         self.assertTrue("config" in rdesc.get("ldapresolver"), rdesc)
         self.assertTrue("clazz" in rdesc.get("ldapresolver"), rdesc)
 
-        uinfo = y.getUserInfo(user_id)
-        self.assertTrue(uinfo.get("username") == "bob@example.com", uinfo)
+        # Use email as logon name
+        y.loadConfig({'LDAPURI': 'ldap://localhost',
+                      'LDAPBASE': 'o=test',
+                      'BINDDN': 'cn=manager,ou=example,o=test',
+                      'BINDPW': 'ldaptest',
+                      'LOGINNAMEATTRIBUTE': 'email',
+                      'LDAPSEARCHFILTER': '(cn=*)',
+                      'USERINFO': '{ "phone" : "telephoneNumber", '
+                                  '"mobile" : "mobile"'
+                                  ', "email" : "email", '
+                                  '"surname" : "sn", '
+                                  '"givenname" : "givenName" }',
+                      'UIDTYPE': 'DN',
+                      })
+
+        uinfo = y.getUserInfo("cn=bob,ou=example,o=test")
+        self.assertTrue(uinfo.get("email") == "bob@example.com", uinfo)
 
         ret = y.getUserList({"username": "bob@example.com"})
         self.assertTrue(len(ret) == 1, ret)
@@ -612,7 +624,6 @@ class LDAPResolverTestCase(MyTestCase):
                       'BINDPW': 'ldaptest',
                       'LOGINNAMEATTRIBUTE': 'cn',
                       'LDAPSEARCHFILTER': '(cn=*)',
-                      'LDAPFILTER': '(&(cn=%s))',
                       'USERINFO': '{ "username": "cn",'
                                   '"phone" : "telephoneNumber", '
                                   '"mobile" : "mobile"'
@@ -651,7 +662,6 @@ class LDAPResolverTestCase(MyTestCase):
                       'BINDPW': 'ldaptest',
                       'LOGINNAMEATTRIBUTE': 'cn',
                       'LDAPSEARCHFILTER': '(cn=*)',
-                      'LDAPFILTER': '(&(cn=%s))',
                       'USERINFO': '{ "username": "cn",'
                                   '"phone" : "telephoneNumber", '
                                   '"mobile" : "mobile"'
@@ -705,7 +715,6 @@ class LDAPResolverTestCase(MyTestCase):
                                 'BINDPW': 'ldaptest',
                                 'LOGINNAMEATTRIBUTE': 'cn',
                                 'LDAPSEARCHFILTER': '(cn=*)',
-                                'LDAPFILTER': '(&(cn=%s))',
                                 'USERINFO': '{ "username": "cn",'
                                             '"phone" : "telephoneNumber", '
                                             '"mobile" : "mobile"'
@@ -717,8 +726,8 @@ class LDAPResolverTestCase(MyTestCase):
         })
 
         self.assertTrue(res[0], res)
-        self.assertTrue(res[1] == 'Your LDAP config seems to be OK, 3 user '
-                                  'objects found.', res)
+        self.assertTrue("3" in res[1])
+        # 'Your LDAP config seems to be OK, 3 user objects found.'
 
     @ldap3mock.activate
     def test_03_testconnection_anonymous(self):
@@ -729,7 +738,6 @@ class LDAPResolverTestCase(MyTestCase):
                                 'LOGINNAMEATTRIBUTE': 'cn',
                                 'LDAPSEARCHFILTER': '(cn=*)',
                                 'BINDDN': '',
-                                'LDAPFILTER': '(&(cn=%s))',
                                 'USERINFO': '{ "username": "cn",'
                                             '"phone" : "telephoneNumber", '
                                             '"mobile" : "mobile"'
@@ -741,8 +749,8 @@ class LDAPResolverTestCase(MyTestCase):
         })
 
         self.assertTrue(res[0], res)
-        self.assertTrue(res[1] == 'Your LDAP config seems to be OK, 3 user '
-                                  'objects found.', res)
+        self.assertTrue("3" in res[1])
+        #'Your LDAP config seems to be OK, 3 user objects found.'
 
     @ldap3mock.activate
     def test_04_testconnection_fail(self):
@@ -754,7 +762,6 @@ class LDAPResolverTestCase(MyTestCase):
                                 'BINDPW': 'wrongpw',
                                 'LOGINNAMEATTRIBUTE': 'cn',
                                 'LDAPSEARCHFILTER': '(cn=*)',
-                                'LDAPFILTER': '(&(cn=%s))',
                                 'USERINFO': '{ "username": "cn",'
                                             '"phone" : "telephoneNumber", '
                                             '"mobile" : "mobile"'
@@ -779,7 +786,6 @@ class LDAPResolverTestCase(MyTestCase):
                                 'AUTHTYPE': 'unknown',
                                 'LOGINNAMEATTRIBUTE': 'cn',
                                 'LDAPSEARCHFILTER': '(cn=*)',
-                                'LDAPFILTER': '(&(cn=%s))',
                                 'USERINFO': '{ "username": "cn",'
                                             '"phone" : "telephoneNumber", '
                                             '"mobile" : "mobile"'
@@ -793,7 +799,7 @@ class LDAPResolverTestCase(MyTestCase):
         self.assertFalse(res[0], res)
         self.assertTrue("Authtype unknown not supported" in res[1], res)
 
-    def test_06_slit_uri(self):
+    def test_06_split_uri(self):
         uri = "ldap://server"
         server, port, ssl = LDAPResolver.split_uri(uri)
         self.assertEqual(ssl, False)
@@ -855,7 +861,6 @@ class LDAPResolverTestCase(MyTestCase):
                       'BINDPW': 'ldaptest',
                       'LOGINNAMEATTRIBUTE': 'cn',
                       'LDAPSEARCHFILTER': '(cn=*)',
-                      'LDAPFILTER': '(&(cn=%s))',
                       'USERINFO': '{ "username": "cn",'
                                   '"phone" : "telephoneNumber", '
                                   '"mobile" : "mobile"'
@@ -885,7 +890,6 @@ class LDAPResolverTestCase(MyTestCase):
                       'BINDPW': 'ldaptest',
                       'LOGINNAMEATTRIBUTE': 'cn',
                       'LDAPSEARCHFILTER': '(cn=*)',
-                      'LDAPFILTER': '(&(cn=%s))',
                       'USERINFO': '{ "username": "cn",'
                                   '"phone" : "telephoneNumber",'
                                   '"mobile" : "mobile",'
@@ -928,7 +932,6 @@ class LDAPResolverTestCase(MyTestCase):
                       'BINDPW': 'ldaptest',
                       'LOGINNAMEATTRIBUTE': 'cn',
                       'LDAPSEARCHFILTER': '(cn=*)',
-                      'LDAPFILTER': '(&(cn=%s))',
                       'USERINFO': '{ "username": "cn",'
                                   '"phone" : "telephoneNumber", '
                                   '"mobile" : "mobile"'
@@ -955,7 +958,6 @@ class LDAPResolverTestCase(MyTestCase):
                       'BINDPW': 'ldaptest',
                       'LOGINNAMEATTRIBUTE': 'cn',
                       'LDAPSEARCHFILTER': '(cn=*)',
-                      'LDAPFILTER': '(&(cn=%s))',
                       'USERINFO': '{ "username": "cn",'
                                   '"phone" : "telephoneNumber", '
                                   '"mobile" : "mobile"'
@@ -982,7 +984,6 @@ class LDAPResolverTestCase(MyTestCase):
                       'BINDPW': 'ldaptest',
                       'LOGINNAMEATTRIBUTE': 'cn',
                       'LDAPSEARCHFILTER': '(cn=*)',
-                      'LDAPFILTER': '(&(cn=%s))',
                       'USERINFO': '{ "username": "cn",'
                                   '"phone" : "telephoneNumber", '
                                   '"mobile" : "mobile",'
@@ -1064,7 +1065,6 @@ class LDAPResolverTestCase(MyTestCase):
                       'BINDPW': 'ldaptest',
                       'LOGINNAMEATTRIBUTE': 'cn',
                       'LDAPSEARCHFILTER': '(cn=*)',
-                      'LDAPFILTER': '(&(cn=%s))',
                       'USERINFO': '{ "username": "cn",'
                                   '"phone" : "telephoneNumber", '
                                   '"mobile" : "mobile",'
@@ -1082,12 +1082,12 @@ class LDAPResolverTestCase(MyTestCase):
         })
 
         user = "achmed"
-        uid = uuid.uuid4().bytes
-        user_id = str(uuid.UUID(bytes_le=uid))
+        uid_bin = uuid.uuid4().bytes
+        user_id = str(uuid.UUID(bytes_le=uid_bin))
 
         attributes = {"username": user,
                       "surname": "Ali",
-                      "userid": uid,
+                      "userid": user_id,
                       "email": "achmed.ali@example.com",
                       "password": "testing123",
                       'mobile': ["1234", "45678"],
@@ -1113,7 +1113,6 @@ class LDAPResolverTestCase(MyTestCase):
                       'BINDPW': 'ldaptest',
                       'LOGINNAMEATTRIBUTE': 'cn',
                       'LDAPSEARCHFILTER': '(cn=*)',
-                      'LDAPFILTER': '(&(cn=%s))',
                       'USERINFO': '{ "username": "cn",'
                                   '"phone" : "telephoneNumber", '
                                   '"mobile" : "mobile"'
@@ -1143,7 +1142,6 @@ class LDAPResolverTestCase(MyTestCase):
                       'BINDPW': 'ldaptest',
                       'LOGINNAMEATTRIBUTE': 'cn',
                       'LDAPSEARCHFILTER': '(cn=*)',
-                      'LDAPFILTER': '(&(cn=%s))',
                       'USERINFO': '{ "username": "cn",'
                                   '"phone" : "telephoneNumber", '
                                   '"mobile" : "mobile"'
@@ -1167,7 +1165,6 @@ class LDAPResolverTestCase(MyTestCase):
                       'BINDPW': 'ldaptest',
                       'LOGINNAMEATTRIBUTE': 'cn',
                       'LDAPSEARCHFILTER': '(cn=*)',
-                      'LDAPFILTER': '(&(cn=%s))',
                       'USERINFO': '{ "username": "cn",'
                                   '"mobile" : "mobile"'
                                   ', "email" : "mail", '
@@ -1185,6 +1182,69 @@ class LDAPResolverTestCase(MyTestCase):
         self.assertEqual(user_info.get("username"), "alice")
         self.assertEqual(user_info.get("surname"), "Cooper")
         self.assertEqual(user_info.get("givenname"), "Alice")
+
+    @ldap3mock.activate
+    def test_23_start_tls(self):
+        # Check that START_TLS and TLS_VERIFY are actually passed to the ldap3 Connection
+        ldap3mock.setLDAPDirectory(LDAPDirectory)
+        config = {'LDAPURI': 'ldap://localhost',
+                  'LDAPBASE': 'o=test',
+                  'BINDDN': 'cn=manager,ou=example,o=test',
+                  'BINDPW': 'ldaptest',
+                  'LOGINNAMEATTRIBUTE': 'cn',
+                  'LDAPSEARCHFILTER': '(cn=*)',
+                  'USERINFO': '{ "username": "cn",'
+                                '"phone" : "telephoneNumber", '
+                                '"mobile" : "mobile"'
+                                ', "email" : "mail", '
+                                '"surname" : "sn", '
+                                '"givenname" : "givenName" }',
+                  'UIDTYPE': 'unknownType',
+                  'CACHE_TIMEOUT': 0,
+                  'START_TLS': '1',
+                  'TLS_VERIFY': '1'
+        }
+        start_tls_resolver = LDAPResolver()
+        start_tls_resolver.loadConfig(config)
+        result = start_tls_resolver.getUserList({'username': '*'})
+        self.assertEqual(len(result), 3)
+        # We check two things:
+        # 1) start_tls has actually been called!
+        self.assertTrue(start_tls_resolver.l.start_tls_called)
+        # 2) All Server objects were constructed with a non-None TLS context, but use_ssl=False
+        for _, kwargs in ldap3mock.get_server_mock().call_args_list:
+            self.assertIsNotNone(kwargs['tls'])
+            self.assertFalse(kwargs['use_ssl'])
+
+
+    @ldap3mock.activate
+    def test_24_ldaps(self):
+        # Check that use_ssl and tls are actually passed to the Connection
+        ldap3mock.setLDAPDirectory(LDAPDirectory)
+        config = {'LDAPURI': 'ldaps://localhost',
+                  'LDAPBASE': 'o=test',
+                  'BINDDN': 'cn=manager,ou=example,o=test',
+                  'BINDPW': 'ldaptest',
+                  'LOGINNAMEATTRIBUTE': 'cn',
+                  'LDAPSEARCHFILTER': '(cn=*)',
+                  'USERINFO': '{ "username": "cn",'
+                                '"phone" : "telephoneNumber", '
+                                '"mobile" : "mobile"'
+                                ', "email" : "mail", '
+                                '"surname" : "sn", '
+                                '"givenname" : "givenName" }',
+                  'UIDTYPE': 'unknownType',
+                  'CACHE_TIMEOUT': 0,
+                  'TLS_VERIFY': '1'
+        }
+        start_tls_resolver = LDAPResolver()
+        start_tls_resolver.loadConfig(config)
+        result = start_tls_resolver.getUserList({'username': '*'})
+        self.assertEqual(len(result), 3)
+        # We check that all Server objects were constructed with a non-None TLS context and use_ssl=True
+        for _, kwargs in ldap3mock.get_server_mock().call_args_list:
+            self.assertIsNotNone(kwargs['tls'])
+            self.assertTrue(kwargs['use_ssl'])
 
 
 class BaseResolverTestCase(MyTestCase):
@@ -1438,7 +1498,6 @@ class ResolverTestCase(MyTestCase):
                                'BINDPW': 'ldaptest',
                                'LOGINNAMEATTRIBUTE': 'cn',
                                'LDAPSEARCHFILTER': '(cn=*)',
-                               'LDAPFILTER': '(&(cn=%s))',
                                'USERINFO': '{ "username": "cn",'
                                            '"phone" : "telephoneNumber", '
                                            '"mobile" : "mobile"'
@@ -1467,7 +1526,6 @@ class ResolverTestCase(MyTestCase):
                                'BINDPW': 'ldaptest',
                                'LOGINNAMEATTRIBUTE': 'cn',
                                'LDAPSEARCHFILTER': '(cn=*)',
-                               'LDAPFILTER': '(&(cn=%s))',
                                'USERINFO': '{ "username": "cn",'
                                            '"phone" : "telephoneNumber", '
                                            '"surname" : "sn", '

@@ -11,6 +11,7 @@ from privacyidea.lib.eventhandler.usernotification import (
     UserNotificationEventHandler, NOTIFY_TYPE)
 from privacyidea.lib.eventhandler.tokenhandler import (TokenEventHandler,
                                                        ACTION_TYPE, VALIDITY)
+from privacyidea.lib.eventhandler.scripthandler import ScriptEventHandler
 from privacyidea.lib.eventhandler.base import BaseEventHandler, CONDITION
 from privacyidea.lib.smtpserver import add_smtpserver
 from privacyidea.lib.smsprovider.SMSProvider import set_smsgateway
@@ -22,10 +23,14 @@ from privacyidea.lib.event import (delete_event, set_event,
 from privacyidea.lib.resolver import save_resolver, delete_resolver
 from privacyidea.lib.realm import set_realm, delete_realm
 from privacyidea.lib.token import (init_token, remove_token, unassign_token,
-                                   get_realms_of_token, get_tokens)
+                                   get_realms_of_token, get_tokens,
+                                   add_tokeninfo)
 from privacyidea.lib.tokenclass import DATE_FORMAT
 from privacyidea.lib.user import create_user, User
+from privacyidea.lib.policy import ACTION
 from datetime import datetime, timedelta
+from dateutil.parser import parse as parse_date_string
+from dateutil.tz import tzlocal
 import json
 
 
@@ -108,6 +113,177 @@ class BaseEventHandlerTestCase(MyTestCase):
         r = base_handler.do("action")
         self.assertTrue(r)
 
+    def test_02_check_conditions_only_one_token_no_serial(self):
+        # In case there is no token serial in the request (like in a failed
+        # auth request of a user with no token) we check if the user has only
+        #  one token then this token is used in the conditions
+
+        # prepare
+        # setup realms
+        self.setUp_user_realms()
+        serial = "pw01"
+        user = User("cornelius", "realm1")
+        remove_token(user=user)
+        tok = init_token({"serial": serial,
+                          "type": "pw", "otppin": "test", "otpkey": "secret"},
+                         user=user)
+        self.assertEqual(tok.type, "pw")
+
+        uhandler = BaseEventHandler()
+        builder = EnvironBuilder(method='POST',
+                                 data={'user': "cornelius@realm1",
+                                       "pass": "wrongvalue"},
+                                 headers={})
+        env = builder.get_environ()
+        req = Request(env)
+        # This is a kind of authentication request
+        req.all_data = {"user": "cornelius@realm1",
+                        "pass": "wrongvalue"}
+        req.User = User("cornelius", "realm1")
+        resp = Response()
+        resp.data = """{"result": {"value": false}}"""
+        # Do checking
+        r = uhandler.check_condition(
+            {"g": {},
+             "handler_def": {"conditions": {CONDITION.TOKENTYPE: "pw"}},
+             "request": req,
+             "response": resp
+             }
+        )
+        # The only token of the user is of type "pw".
+        self.assertEqual(r, True)
+
+        remove_token(serial)
+
+    def test_03_check_auth_count_conditions(self):
+        self.setUp_user_realms()
+        serial = "pw01"
+        user = User("cornelius", "realm1")
+        remove_token(user=user)
+        tok = init_token({"serial": serial,
+                          "type": "pw", "otppin": "test", "otpkey": "secret"},
+                         user=user)
+        self.assertEqual(tok.type, "pw")
+        uhandler = BaseEventHandler()
+        builder = EnvironBuilder(method='POST',
+                                 data={'user': "cornelius@realm1",
+                                       "pass": "wrongvalue"},
+                                 headers={})
+        env = builder.get_environ()
+        req = Request(env)
+        # This is a kind of authentication request
+        req.all_data = {"user": "cornelius@realm1",
+                        "pass": "wrongvalue"}
+        req.User = User("cornelius", "realm1")
+        resp = Response()
+        resp.data = """{"result": {"value": false}}"""
+
+        r = uhandler.check_condition(
+            {"g": {},
+             "handler_def": {"conditions": {CONDITION.COUNT_AUTH: "<100"}},
+             "request": req,
+             "response": resp
+             }
+        )
+        self.assertEqual(r, True)
+        r = uhandler.check_condition(
+            {"g": {},
+             "handler_def": {"conditions": {CONDITION.COUNT_AUTH: ">100"}},
+             "request": req,
+             "response": resp
+             }
+        )
+        self.assertFalse(r)
+
+        # Set the count_auth and count_auth_success
+        add_tokeninfo(serial, "count_auth", 100)
+        add_tokeninfo(serial, "count_auth_success", 50)
+        r = uhandler.check_condition(
+            {"g": {},
+             "handler_def": {"conditions": {CONDITION.COUNT_AUTH: ">99"}},
+             "request": req,
+             "response": resp
+             }
+        )
+        self.assertTrue(r)
+
+        r = uhandler.check_condition(
+            {"g": {},
+             "handler_def": {"conditions": {CONDITION.COUNT_AUTH_SUCCESS:
+                                                ">45"}},
+             "request": req,
+             "response": resp
+             }
+        )
+        self.assertTrue(r)
+
+        r = uhandler.check_condition(
+            {"g": {},
+             "handler_def": {"conditions": {CONDITION.COUNT_AUTH_FAIL:
+                                                ">45"}},
+             "request": req,
+             "response": resp
+             }
+        )
+        self.assertTrue(r)
+
+        r = uhandler.check_condition(
+            {"g": {},
+             "handler_def": {"conditions": {CONDITION.COUNT_AUTH_FAIL:
+                                                "<45"}},
+             "request": req,
+             "response": resp
+             }
+        )
+        self.assertFalse(r)
+        remove_token(serial)
+
+
+class ScriptEventTestCase(MyTestCase):
+
+    def test_01_runscript(self):
+        g = FakeFlaskG()
+        audit_object = FakeAudit()
+        audit_object.audit_data["serial"] = "SPASS01"
+
+        g.logged_in_user = {"username": "admin",
+                            "role": "admin",
+                            "realm": ""}
+        g.audit_object = audit_object
+
+        builder = EnvironBuilder(method='POST',
+                                 data={'serial': "SPASS01"},
+                                 headers={})
+
+        env = builder.get_environ()
+        # Set the remote address so that we can filter for it
+        env["REMOTE_ADDR"] = "10.0.0.1"
+        g.client_ip = env["REMOTE_ADDR"]
+        req = Request(env)
+        req.all_data = {"serial": "SPASS01", "type": "spass"}
+        req.User = User()
+        resp = Response()
+        resp.data = """{"result": {"value": true}}"""
+
+        options = {"g": g,
+                   "request": req,
+                   "response": resp,
+                   "handler_def": {
+                       "options":{
+                           "user": "1",
+                           "realm": "1",
+                           "serial": "1",
+                           "logged_in_user": "1",
+                           "logged_in_role": "1",}
+                   }
+                   }
+
+        script_name = "ls.sh"
+        t_handler = ScriptEventHandler()
+        res = t_handler.do(script_name, options=options)
+        self.assertTrue(res)
+        remove_token("SPASS01")
+
 
 class TokenEventTestCase(MyTestCase):
 
@@ -122,7 +298,7 @@ class TokenEventTestCase(MyTestCase):
         audit_object = FakeAudit()
         audit_object.audit_data["serial"] = "SPASS01"
 
-        g.logged_in_user = {"user": "admin",
+        g.logged_in_user = {"username": "admin",
                             "role": "admin",
                             "realm": ""}
         g.audit_object = audit_object
@@ -169,7 +345,7 @@ class TokenEventTestCase(MyTestCase):
         audit_object = FakeAudit()
         audit_object.audit_data["serial"] = "SPASS01"
 
-        g.logged_in_user = {"user": "admin",
+        g.logged_in_user = {"username": "admin",
                             "role": "admin",
                             "realm": ""}
         g.audit_object = audit_object
@@ -212,7 +388,7 @@ class TokenEventTestCase(MyTestCase):
         audit_object = FakeAudit()
         audit_object.audit_data["serial"] = "SPASS01"
 
-        g.logged_in_user = {"user": "admin",
+        g.logged_in_user = {"username": "admin",
                             "role": "admin",
                             "realm": ""}
         g.audit_object = audit_object
@@ -266,7 +442,7 @@ class TokenEventTestCase(MyTestCase):
         audit_object = FakeAudit()
         audit_object.audit_data["serial"] = "SPASS01"
 
-        g.logged_in_user = {"user": "admin",
+        g.logged_in_user = {"username": "admin",
                             "role": "admin",
                             "realm": ""}
         g.audit_object = audit_object
@@ -309,7 +485,7 @@ class TokenEventTestCase(MyTestCase):
         audit_object = FakeAudit()
         audit_object.audit_data["serial"] = "SPASS01"
 
-        g.logged_in_user = {"user": "admin",
+        g.logged_in_user = {"username": "admin",
                             "role": "admin",
                             "realm": ""}
         g.audit_object = audit_object
@@ -324,7 +500,8 @@ class TokenEventTestCase(MyTestCase):
         g.client_ip = env["REMOTE_ADDR"]
         req = Request(env)
         req.all_data = {"serial": "SPASS01", "type": "spass"}
-        req.User = User("cornelius", self.realm1)
+        user_obj = User("cornelius", self.realm1)
+        req.User = user_obj
         resp = Response()
         resp.data = """{"result": {"value": true}}"""
 
@@ -343,8 +520,64 @@ class TokenEventTestCase(MyTestCase):
         # Check if the token was created and assigned
         t = get_tokens(tokentype="paper")[0]
         self.assertTrue(t)
-        self.assertEqual(t.user, User("cornelius", self.realm1))
+        self.assertEqual(t.user, user_obj)
+        remove_token(t.token.serial)
 
+        # Enroll an SMS token
+        options = {"g": g,
+                   "request": req,
+                   "response": resp,
+                   "handler_def": {"options":
+                                       {"tokentype": "sms",
+                                        "user": "1"}}
+                   }
+
+        t_handler = TokenEventHandler()
+        res = t_handler.do(ACTION_TYPE.INIT, options=options)
+        self.assertTrue(res)
+        # Check if the token was created and assigned
+        t = get_tokens(tokentype="sms")[0]
+        self.assertTrue(t)
+        self.assertEqual(t.user, user_obj)
+        self.assertEqual(t.get_tokeninfo("phone"), user_obj.info.get("mobile"))
+        remove_token(t.token.serial)
+
+        # Enroll an Email token
+        options = {"g": g,
+                   "request": req,
+                   "response": resp,
+                   "handler_def": {"options":
+                                       {"tokentype": "email",
+                                        "user": "1"}}
+                   }
+
+        t_handler = TokenEventHandler()
+        res = t_handler.do(ACTION_TYPE.INIT, options=options)
+        self.assertTrue(res)
+        # Check if the token was created and assigned
+        t = get_tokens(tokentype="email")[0]
+        self.assertTrue(t)
+        self.assertEqual(t.user, user_obj)
+        self.assertEqual(t.get_tokeninfo("email"), user_obj.info.get("email"))
+        remove_token(t.token.serial)
+
+        # Enroll an mOTP token
+        options = {"g": g,
+                   "request": req,
+                   "response": resp,
+                   "handler_def": {"options":
+                                       {"tokentype": "motp",
+                                        "user": "1",
+                                        "motppin": "1234"}}
+                   }
+
+        t_handler = TokenEventHandler()
+        res = t_handler.do(ACTION_TYPE.INIT, options=options)
+        self.assertTrue(res)
+        # Check if the token was created and assigned
+        t = get_tokens(tokentype="motp")[0]
+        self.assertTrue(t)
+        self.assertEqual(t.user, user_obj)
         remove_token(t.token.serial)
 
     def test_06_set_description(self):
@@ -361,7 +594,7 @@ class TokenEventTestCase(MyTestCase):
         audit_object = FakeAudit()
         audit_object.audit_data["serial"] = "SPASS01"
 
-        g.logged_in_user = {"user": "admin",
+        g.logged_in_user = {"username": "admin",
                             "role": "admin",
                             "realm": ""}
         g.audit_object = audit_object
@@ -411,7 +644,7 @@ class TokenEventTestCase(MyTestCase):
         audit_object = FakeAudit()
         audit_object.audit_data["serial"] = "SPASS01"
 
-        g.logged_in_user = {"user": "admin",
+        g.logged_in_user = {"username": "admin",
                             "role": "admin",
                             "realm": ""}
         g.audit_object = audit_object
@@ -445,11 +678,112 @@ class TokenEventTestCase(MyTestCase):
         t = get_tokens(serial="SPASS01")
         end = t[0].get_validity_period_end()
         start = t[0].get_validity_period_start()
-        d_end = datetime.strptime(end, DATE_FORMAT)
-        d_start = datetime.strptime(start, DATE_FORMAT)
-        self.assertTrue(datetime.now() + timedelta(minutes=9) < d_start)
-        self.assertTrue(datetime.now() + timedelta(days=9) < d_end)
-        self.assertTrue(datetime.now() + timedelta(days=11) > d_end)
+        d_end = parse_date_string(end)
+        d_start = parse_date_string(start)
+        self.assertTrue(datetime.now(tzlocal()) + timedelta(minutes=9) < d_start)
+        self.assertTrue(datetime.now(tzlocal()) + timedelta(days=9) < d_end)
+        self.assertTrue(datetime.now(tzlocal()) + timedelta(days=11) > d_end)
+
+        remove_token("SPASS01")
+
+    def test_08_set_count_window(self):
+        # setup realms
+        self.setUp_user_realms()
+
+        init_token({"serial": "SPASS01", "type": "spass"},
+                   User("cornelius", self.realm1))
+        t = get_tokens(serial="SPASS01")
+        uid = t[0].get_user_id()
+        self.assertEqual(uid, "1000")
+
+        g = FakeFlaskG()
+        audit_object = FakeAudit()
+        audit_object.audit_data["serial"] = "SPASS01"
+
+        g.logged_in_user = {"username": "admin",
+                            "role": "admin",
+                            "realm": ""}
+        g.audit_object = audit_object
+
+        builder = EnvironBuilder(method='POST',
+                                 data={'serial': "SPASS01"},
+                                 headers={})
+
+        env = builder.get_environ()
+        # Set the remote address so that we can filter for it
+        env["REMOTE_ADDR"] = "10.0.0.1"
+        g.client_ip = env["REMOTE_ADDR"]
+        req = Request(env)
+        req.all_data = {"serial": "SPASS01", "type": "spass"}
+        resp = Response()
+        resp.data = """{"result": {"value": true}}"""
+
+        # The count window of the token will be set to 123
+        options = {"g": g,
+                   "request": req,
+                   "response": resp,
+                   "handler_def": {"options": {"count window": "123"}
+                                   }
+                   }
+
+        t_handler = TokenEventHandler()
+        res = t_handler.do(ACTION_TYPE.SET_COUNTWINDOW, options=options)
+        self.assertTrue(res)
+        # Check if the token has the correct sync window
+        t = get_tokens(serial="SPASS01")
+        sw = t[0].get_count_window()
+        self.assertEqual(sw, 123)
+
+        remove_token("SPASS01")
+
+    def test_09_set_tokeninfo(self):
+        # setup realms
+        self.setUp_user_realms()
+
+        init_token({"serial": "SPASS01", "type": "spass"},
+                   User("cornelius", self.realm1))
+        t = get_tokens(serial="SPASS01")
+        uid = t[0].get_user_id()
+        self.assertEqual(uid, "1000")
+
+        g = FakeFlaskG()
+        audit_object = FakeAudit()
+        audit_object.audit_data["serial"] = "SPASS01"
+
+        g.logged_in_user = {"username": "admin",
+                            "role": "admin",
+                            "realm": ""}
+        g.audit_object = audit_object
+
+        builder = EnvironBuilder(method='POST',
+                                 data={'serial': "SPASS01"},
+                                 headers={})
+
+        env = builder.get_environ()
+        # Set the remote address so that we can filter for it
+        env["REMOTE_ADDR"] = "10.0.0.1"
+        g.client_ip = env["REMOTE_ADDR"]
+        req = Request(env)
+        req.all_data = {"serial": "SPASS01", "type": "spass"}
+        resp = Response()
+        resp.data = """{"result": {"value": true}}"""
+
+        # The tokeninfo timeWindow will be set to 33000
+        options = {"g": g,
+                   "request": req,
+                   "response": resp,
+                   "handler_def": {"options": {"key": "timeWindow",
+                                               "value": "33000"}
+                                   }
+                   }
+
+        t_handler = TokenEventHandler()
+        res = t_handler.do(ACTION_TYPE.SET_TOKENINFO, options=options)
+        self.assertTrue(res)
+        # Check if the token has the correct sync window
+        t = get_tokens(serial="SPASS01")
+        tw = t[0].get_tokeninfo("timeWindow")
+        self.assertEqual(tw, "33000")
 
         remove_token("SPASS01")
 
@@ -475,7 +809,7 @@ class UserNotificationTestCase(MyTestCase):
         audit_object = FakeAudit()
         audit_object.audit_data["serial"] = "123456"
 
-        g.logged_in_user = {"user": "admin",
+        g.logged_in_user = {"username": "admin",
                             "role": "admin",
                             "realm": ""}
         g.audit_object = audit_object
@@ -525,7 +859,7 @@ class UserNotificationTestCase(MyTestCase):
         audit_object = FakeAudit()
         audit_object.audit_data["serial"] = "123456"
 
-        g.logged_in_user = {"user": "admin",
+        g.logged_in_user = {"username": "admin",
                             "role": "admin",
                             "realm": ""}
         g.audit_object = audit_object
@@ -829,6 +1163,63 @@ class UserNotificationTestCase(MyTestCase):
         # The condition was, token-not-assigned and the token has no user
         self.assertEqual(r, True)
 
+    def test_10_check_conditions_token_validity_period(self):
+        uhandler = UserNotificationEventHandler()
+        serial = "spass01"
+        builder = EnvironBuilder(method='POST',
+                                 data={'user': "cornelius@realm1"},
+                                 headers={})
+
+        tok = init_token({"serial": serial,
+                          "type": "spass"},
+                          user=User("cornelius", "realm1"))
+
+        env = builder.get_environ()
+        req = Request(env)
+        req.all_data = {"user": "cornelius@realm1",
+                        "serial": serial}
+        req.User = User("cornelius", "realm1")
+        resp = Response()
+        resp.data = """{"result": {"value": true}}"""
+
+        # token is within validity period
+        r = uhandler.check_condition(
+            {"g": {},
+             "request": req,
+             "response": resp,
+             "handler_def": {
+                 "conditions": {CONDITION.TOKEN_VALIDITY_PERIOD: "True"}}
+             }
+        )
+        self.assertEqual(r, True)
+
+        # token is outside validity period
+        end_date = datetime.now(tzlocal()) - timedelta(1)
+        end = end_date.strftime(DATE_FORMAT)
+        tok.set_validity_period_end(end)
+        r = uhandler.check_condition(
+            {"g": {},
+             "request": req,
+             "response": resp,
+             "handler_def": {
+                 "conditions": {CONDITION.TOKEN_VALIDITY_PERIOD: "True"}}
+             }
+        )
+        self.assertEqual(r, False)
+
+        # token is outside validity period but we check for invalid token
+        r = uhandler.check_condition(
+            {"g": {},
+             "request": req,
+             "response": resp,
+             "handler_def": {
+                 "conditions": {CONDITION.TOKEN_VALIDITY_PERIOD: "False"}}
+             }
+        )
+        self.assertEqual(r, True)
+
+        remove_token(serial)
+
     def test_10_check_conditions_token_is_orphaned(self):
         uhandler = UserNotificationEventHandler()
         serial = "orphaned1"
@@ -901,7 +1292,7 @@ class UserNotificationTestCase(MyTestCase):
         audit_object = FakeAudit()
         audit_object.audit_data["serial"] = "123456"
 
-        g.logged_in_user = {"user": "admin",
+        g.logged_in_user = {"username": "admin",
                             "role": "admin",
                             "realm": ""}
         g.audit_object = audit_object
@@ -950,7 +1341,7 @@ class UserNotificationTestCase(MyTestCase):
         audit_object = FakeAudit()
         audit_object.audit_data["serial"] = "123456"
 
-        g.logged_in_user = {"user": "admin",
+        g.logged_in_user = {"username": "admin",
                             "role": "admin",
                             "realm": ""}
         g.audit_object = audit_object
@@ -1003,7 +1394,7 @@ class UserNotificationTestCase(MyTestCase):
         audit_object = FakeAudit()
         audit_object.audit_data["serial"] = "123456"
 
-        g.logged_in_user = {"user": "admin",
+        g.logged_in_user = {"username": "admin",
                             "role": "admin",
                             "realm": ""}
         g.audit_object = audit_object
@@ -1073,7 +1464,7 @@ class UserNotificationTestCase(MyTestCase):
         audit_object = FakeAudit()
         audit_object.audit_data["serial"] = "123456"
 
-        g.logged_in_user = {"user": "testadmin",
+        g.logged_in_user = {"username": "testadmin",
                             "role": "admin",
                             "realm": ""}
         g.audit_object = audit_object
@@ -1111,7 +1502,7 @@ class UserNotificationTestCase(MyTestCase):
         self.assertTrue(res)
 
         # Now send the mail to a logged in user from a realm
-        g.logged_in_user = {"user": "cornelius",
+        g.logged_in_user = {"username": "cornelius",
                             "role": "user",
                             "realm": "realm1"}
         options = {"g": g,
@@ -1141,7 +1532,7 @@ class UserNotificationTestCase(MyTestCase):
         audit_object = FakeAudit()
         audit_object.audit_data["serial"] = "123456"
 
-        g.logged_in_user = {"user": "testadmin",
+        g.logged_in_user = {"username": "testadmin",
                             "role": "admin",
                             "realm": ""}
         g.audit_object = audit_object
@@ -1298,3 +1689,91 @@ class UserNotificationTestCase(MyTestCase):
         self.assertEqual(r, False)
 
         remove_token("oath1234")
+
+    def test_17_check_conditions_otp_counter(self):
+        # prepare
+        serial = "spass01"
+        user = User("cornelius", "realm1")
+        remove_token(user=user)
+        uhandler = UserNotificationEventHandler()
+        builder = EnvironBuilder(method='POST',
+                                 data={'user': "cornelius@realm1"},
+                                 headers={})
+
+        tok = init_token({"serial": serial, "type": "spass",
+                          "otppin": "spass"},
+                         user=user)
+        env = builder.get_environ()
+        req = Request(env)
+        req.all_data = {"user": "cornelius@realm1",
+                        "serial": serial}
+        req.User = User("cornelius", "realm1")
+        resp = Response()
+        resp.data = """{"result": {"value": true}}"""
+        # Do checking
+        r = uhandler.check_condition(
+            {"g": {},
+             "handler_def": {"conditions": {CONDITION.OTP_COUNTER: "1"}},
+             "request": req,
+             "response": resp
+             }
+        )
+        # The counter of the token is 0
+        self.assertEqual(r, False)
+
+        r = uhandler.check_condition(
+            {"g": {},
+             "handler_def": {"conditions": {CONDITION.OTP_COUNTER: "0"}},
+             "request": req,
+             "response": resp
+             }
+        )
+        # The counter of the token is 0
+        self.assertEqual(r, True)
+
+        remove_token(serial)
+
+    def test_18_check_conditions_last_auth(self):
+        # prepare
+        serial = "spass01"
+        user = User("cornelius", "realm1")
+        remove_token(user=user)
+        uhandler = UserNotificationEventHandler()
+        builder = EnvironBuilder(method='POST',
+                                 data={'user': "cornelius@realm1"},
+                                 headers={})
+
+        tok = init_token({"serial": serial, "type": "spass",
+                          "otppin": "spass"},
+                         user=user)
+        # Add last authentication
+        tok.add_tokeninfo(ACTION.LASTAUTH, "2016-10-10 10:10:10.000")
+        env = builder.get_environ()
+        req = Request(env)
+        req.all_data = {"user": "cornelius@realm1",
+                        "serial": serial}
+        req.User = User("cornelius", "realm1")
+        resp = Response()
+        resp.data = """{"result": {"value": true}}"""
+        # Do checking
+        r = uhandler.check_condition(
+            {"g": {},
+             "handler_def": {"conditions": {CONDITION.LAST_AUTH: "1h"}},
+             "request": req,
+             "response": resp
+             }
+        )
+        # the last authentication is longer than one hour ago
+        self.assertEqual(r, True)
+
+        r = uhandler.check_condition(
+            {"g": {},
+             "handler_def": {"conditions": {CONDITION.LAST_AUTH: "100y"}},
+             "request": req,
+             "response": resp
+             }
+        )
+        # The last authentication is not longer than 100 years ago
+        self.assertEqual(r, False)
+
+        remove_token(serial)

@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
 #
+#  2017-01-21 Cornelius Kölbel <cornelius.koelbel@netknights.it>
+#             Add required mobile number and email address when enrolling tokens
+#             added with the help of splashx
 #  2016-11-14 Cornelius Kölbel <cornelius.koelbel@netknights.it>
 #             Initial writup
 #
@@ -34,13 +37,16 @@ from privacyidea.lib.token import (get_token_types, set_validity_period_end,
                                    set_validity_period_start)
 from privacyidea.lib.realm import get_realms
 from privacyidea.lib.token import (set_realms, remove_token, enable_token,
-                                   unassign_token, init_token, set_description)
-from privacyidea.lib.utils import parse_date
-from privacyidea.lib.tokenclass import DATE_FORMAT
-from datetime import datetime
-from gettext import gettext as _
+                                   unassign_token, init_token, set_description,
+                                   set_count_window, add_tokeninfo)
+from privacyidea.lib.utils import parse_date, is_true
+from privacyidea.lib.tokenclass import DATE_FORMAT, AUTH_DATE_FORMAT
+from privacyidea.lib import _
 import json
 import logging
+import datetime
+from dateutil.parser import parse as parse_date_string
+from dateutil.tz import tzlocal
 
 log = logging.getLogger(__name__)
 
@@ -57,6 +63,8 @@ class ACTION_TYPE(object):
     INIT = "enroll"
     SET_DESCRIPTION = "set description"
     SET_VALIDITY = "set validity"
+    SET_COUNTWINDOW = "set countwindow"
+    SET_TOKENINFO = "set tokeninfo"
 
 
 class VALIDITY(object):
@@ -65,7 +73,6 @@ class VALIDITY(object):
     """
     START= "valid from"
     END = "valid till"
-
 
 
 class TokenEventHandler(BaseEventHandler):
@@ -118,13 +125,21 @@ class TokenEventHandler(BaseEventHandler):
                         "user":
                             {"type": "bool",
                              "description": _("Assign token to user in "
-                                              "request or tokenowner.")},
+                                              "request or to tokenowner.")},
                         "realm":
                             {"type": "str",
                              "required": False,
                              "description": _("Set the realm of the newly "
                                               "created token."),
                              "value": realm_list},
+                        "motppin": {
+                            "type": "str",
+                            "visibleIf": "tokentype",
+                            "visibleValue": "motp",
+                            "description": _("Set the MOTP PIN of the MOTP "
+                                             "token during enrollment. This "
+                                             "is a required value for "
+                                             "enrolling MOTP tokens.")}
                         },
                    ACTION_TYPE.SET_DESCRIPTION:
                        {"description":
@@ -149,7 +164,31 @@ class TokenEventHandler(BaseEventHandler):
                                              "date or an offset like +10m, "
                                              "+24h, +7d.")
                         }
-
+                       },
+                   ACTION_TYPE.SET_COUNTWINDOW:
+                       {"count window":
+                            {
+                                # TODO: should be "int" but we do not support
+                                #  this at the moment.
+                                "type": "str",
+                                "required": True,
+                                "description": _("Set the new count window of "
+                                                 "the token.")
+                            }
+                       },
+                   ACTION_TYPE.SET_TOKENINFO:
+                       {"key":
+                           {
+                               "type": "str",
+                               "required": True,
+                               "description": _("Set this tokeninfo key.")
+                           },
+                        "value":
+                            {
+                                "type": "str",
+                                "description": _("Set the above key the this "
+                                                 "value.")
+                            }
                        }
                    }
         return actions
@@ -180,8 +219,11 @@ class TokenEventHandler(BaseEventHandler):
                               ACTION_TYPE.SET_DESCRIPTION,
                               ACTION_TYPE.DELETE, ACTION_TYPE.DISABLE,
                               ACTION_TYPE.ENABLE, ACTION_TYPE.UNASSIGN,
-                              ACTION_TYPE.SET_VALIDITY]:
+                              ACTION_TYPE.SET_VALIDITY,
+                              ACTION_TYPE.SET_COUNTWINDOW,
+                              ACTION_TYPE.SET_TOKENINFO]:
             if serial:
+                log.info("{0!s} for token {1!s}".format(action, serial))
                 if action.lower() == ACTION_TYPE.SET_TOKENREALM:
                     realm = handler_options.get("realm")
                     only_realm = handler_options.get("only_realm")
@@ -191,24 +233,34 @@ class TokenEventHandler(BaseEventHandler):
                     # Add the token realm
                     set_realms(serial, [realm], add=True)
                 elif action.lower() == ACTION_TYPE.DELETE:
-                    log.info("Delete token {0!s}".format(serial))
                     remove_token(serial=serial)
                 elif action.lower() == ACTION_TYPE.DISABLE:
-                    log.info("Disable token {0!s}".format(serial))
                     enable_token(serial, enable=False)
                 elif action.lower() == ACTION_TYPE.ENABLE:
-                    log.info("Enable token {0!s}".format(serial))
                     enable_token(serial, enable=True)
                 elif action.lower() == ACTION_TYPE.UNASSIGN:
-                    log.info("Unassign token {0!s}".format(serial))
                     unassign_token(serial)
                 elif action.lower() == ACTION_TYPE.SET_DESCRIPTION:
-                    log.info("Set description of token {0!s}".format(serial))
-                    set_description(serial, handler_options.get(
-                        "description", ""))
+                    s_now = datetime.datetime.now(tzlocal()).strftime(AUTH_DATE_FORMAT)
+                    set_description(serial,
+                                    (handler_options.get("description") or
+                                     "").format(current_time=s_now,
+                                                client_ip=g.client_ip,
+                                                ua_browser=request.user_agent.browser,
+                                                ua_string=request.user_agent.string))
+                elif action.lower() == ACTION_TYPE.SET_COUNTWINDOW:
+                    set_count_window(serial,
+                                     int(handler_options.get("count window",
+                                                             50)))
+                elif action.lower() == ACTION_TYPE.SET_TOKENINFO:
+                    s_now = datetime.datetime.now(tzlocal()).strftime(AUTH_DATE_FORMAT)
+                    add_tokeninfo(serial, handler_options.get("key"),
+                                  (handler_options.get("value") or "").format(
+                                      current_time=s_now,
+                                      client_ip=g.client_ip,
+                                      ua_browser=request.user_agent.browser,
+                                      ua_string=request.user_agent.string))
                 elif action.lower() == ACTION_TYPE.SET_VALIDITY:
-                    log.info("Set validity period for token {0!s}".format(
-                        serial))
                     start_date = handler_options.get(VALIDITY.START)
                     end_date = handler_options.get(VALIDITY.END)
                     if start_date:
@@ -226,14 +278,31 @@ class TokenEventHandler(BaseEventHandler):
 
         if action.lower() == ACTION_TYPE.INIT:
             log.info("Initializing new token")
-            if handler_options.get("user") in ["1", 1, True]:
+            init_param = {"type": handler_options.get("tokentype"),
+                          "genkey": 1,
+                          "realm": handler_options.get("realm", "")}
+            user = None
+            if is_true(handler_options.get("user")):
                 user = self._get_tokenowner(request)
-            else:
-                user = None
-            t = init_token({"type": handler_options.get("tokentype"),
-                            "genkey": 1,
-                            "realm": handler_options.get("realm", "")},
-                           user=user)
+                tokentype = handler_options.get("tokentype")
+                # Some tokentypes need additional parameters or otherwise
+                # will fail to enroll.
+                # TODO: Other tokentypes will require additional parameters
+                if tokentype == "sms":
+                    init_param['phone'] = user.get_user_phone(
+                        phone_type='mobile')
+                    if not init_param['phone']:
+                        log.warning("Enrolling SMS token. But the user "
+                                    "{0!s} has no mobile number!".format(user))
+                elif tokentype == "email":
+                    init_param['email'] = user.info.get("email", "")
+                    if not init_param['email']:
+                        log.warning("Enrolling EMail token. But the user {0!s}"
+                                    "has no email address!".format(user))
+                elif tokentype == "motp":
+                    init_param['motppin'] = handler_options.get("motppin")
+
+            t = init_token(param=init_param, user=user)
             log.info("New token {0!s} enrolled.".format(t.token.serial))
 
         return ret

@@ -119,15 +119,22 @@ angular.module("privacyideaApp")
     });
 
     $scope.$on('IdleTimeout', function () {
-        console.log("Logout!");
-        $scope.logout();
+        if ($scope.timeout_action == "logout") {
+            console.log("Logout!");
+            $scope.logout();
+        } else {
+            console.log("Lock!");
+            $scope.logoutWarning = false;
+            $scope.$apply();
+            $scope.lock_screen();
+        }
     });
     /*
      $rootScope.$on('Keepalive', function() {
         $scope.logoutWarning = false;
     });
     */
-                                
+
     // helper function
     $scope.isChecked = function (val) {
         // check if val is set
@@ -142,8 +149,17 @@ angular.module("privacyideaApp")
     $scope.transactionid = "";
     AuthFactory.setUser();
 
+    $scope.unlock_first = function () {
+        $scope.transactionid = "";
+        $scope.unlocking = true;
+        $scope.login.username = $scope.loggedInUser.username;
+        $scope.login.realm = $scope.loggedInUser.realm;
+        $scope.authenticate();
+    };
+
     $scope.authenticate_first = function() {
         $scope.transactionid = "";
+        $scope.unlocking = false;
         $scope.authenticate();
     };
 
@@ -259,14 +275,28 @@ angular.module("privacyideaApp")
             $scope.user_page_size = data.result.value.user_page_size;
             $scope.user_details_in_tokenlist = data.result.value.user_details;
             $scope.default_tokentype = data.result.value.default_tokentype;
+            $scope.timeout_action = data.result.value.timeout_action;
+            $rootScope.search_on_enter = data.result.value.search_on_enter;
             var timeout = data.result.value.logout_time;
             PolicyTemplateFactory.setUrl(data.result.value.policy_template_url);
             console.log(timeout);
-            Idle.setIdle(timeout-10);
+            var idlestart = timeout - 10;
+            if (idlestart<=0) {
+                idlestart = 1;
+            }
+            Idle.setIdle(idlestart);
             Idle.watch();
             console.log("successfully authenticated");
             console.log($scope.loggedInUser);
-            $location.path("/token");
+            if ( $scope.unlocking ) {
+                $('#dialogLock').modal().hide();
+                // Hack, since we can not close the modal and thus the body
+                // keeps the modal-open and thus has no scroll-bars
+                $("body").removeClass("modal-open");
+            } else {
+                // if we are unlocking we do NOT go to the tokens
+                $location.path("/token");
+            }
 
             //inform.add(gettextCatalog.getString("privacyIDEA UI supports " +
             //    "hotkeys. Use '?' to get help."), {type: "info", ttl: 10000});
@@ -284,6 +314,13 @@ angular.module("privacyideaApp")
         Idle.unwatch();
         // Jump to top when the policy is saved
         $('html,body').scrollTop(0);
+    };
+
+    $scope.lock_screen = function () {
+        // We need to destroy the auth_token
+        $scope.loggedInUser.auth_token = null;
+        Idle.unwatch();
+        $('#dialogLock').modal().show();
     };
 
     $scope.about = function() {

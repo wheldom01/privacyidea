@@ -27,12 +27,14 @@ The event handler module is bound to an event together with
 * an action
 * optional options ;-)
 """
-from gettext import gettext as _
+from privacyidea.lib import _
 from privacyidea.lib.config import get_token_types
 from privacyidea.lib.realm import get_realms
 from privacyidea.lib.auth import ROLE
+from privacyidea.lib.policy import ACTION
 from privacyidea.lib.token import get_token_owner, get_tokens
-from privacyidea.lib.user import User
+from privacyidea.lib.user import User, UserError
+from privacyidea.lib.utils import compare_condition
 import re
 import json
 import logging
@@ -46,7 +48,14 @@ class CONDITION(object):
     """
     TOKEN_HAS_OWNER = "token_has_owner"
     TOKEN_IS_ORPHANED = "token_is_orphaned"
+    TOKEN_VALIDITY_PERIOD = "token_validity_period"
     USER_TOKEN_NUMBER = "user_token_number"
+    OTP_COUNTER = "otp_counter"
+    TOKENTYPE = "tokentype"
+    LAST_AUTH = "last_auth"
+    COUNT_AUTH = "count_auth"
+    COUNT_AUTH_SUCCESS = "count_auth_success"
+    COUNT_AUTH_FAIL = "count_auth_fail"
 
 
 class BaseEventHandler(object):
@@ -99,7 +108,7 @@ class BaseEventHandler(object):
                           "apply."),
                 "value": [{"name": r} for r in realms.keys()]
             },
-            "tokentype": {
+            CONDITION.TOKENTYPE: {
                 "type": "multi",
                 "desc": _("The type of the token."),
                 "value": [{"name": r} for r in get_token_types()]
@@ -132,6 +141,11 @@ class BaseEventHandler(object):
                           "not exist in the userstore anymore."),
                 "value": ("True", "False")
             },
+            CONDITION.TOKEN_VALIDITY_PERIOD: {
+                "type": "str",
+                "desc": _("Check if the token is within its validity period."),
+                "value": ("True", "False")
+            },
             "serial": {
                 "type": "regexp",
                 "desc": _("Action is triggered, if the serial matches this "
@@ -141,6 +155,36 @@ class BaseEventHandler(object):
                 "type": "str",
                 "desc": _("Action is triggered, if the user has this number "
                           "of tokens assigned.")
+            },
+            CONDITION.OTP_COUNTER: {
+                "type": "str",
+                "desc": _("Action is triggered, if the counter of the token "
+                          "equals this setting.")
+            },
+            CONDITION.LAST_AUTH: {
+                "type": "str",
+                "desc": _("Action is triggered, if the last authentication of "
+                          "the token is older than 7h, 10d or 1y.")
+            },
+            CONDITION.COUNT_AUTH: {
+                "type": "str",
+                "desc": _("This can be '>100', '<99', or '=100', to trigger "
+                          "the action, if the tokeninfo field 'count_auth' is "
+                          "bigger than 100, less than 99 or exactly 100.")
+            },
+            CONDITION.COUNT_AUTH_SUCCESS: {
+                "type": "str",
+                "desc": _("This can be '>100', '<99', or '=100', to trigger "
+                          "the action, if the tokeninfo field "
+                          "'count_auth_success' is "
+                          "bigger than 100, less than 99 or exactly 100.")
+            },
+            CONDITION.COUNT_AUTH_FAIL: {
+                "type": "str",
+                "desc": _("This can be '>100', '<99', or '=100', to trigger "
+                          "the action, if the difference between the tokeninfo "
+                          "field 'count_auth' and 'count_auth_success is "
+                          "bigger than 100, less than 99 or exactly 100.")
             }
         }
         return cond
@@ -173,6 +217,14 @@ class BaseEventHandler(object):
                 log.info("Could not determine tokenowner for {0!s}. Maybe the "
                          "user does not exist anymore.".format(serial))
                 log.debug(exx)
+        # We now check, if the user exists at all!
+        try:
+            ui = user.info
+        except UserError as exx:
+            if exx.id == 905:
+                user = User()
+            else:
+                raise exx
         return user
 
     def check_condition(self, options):
@@ -197,11 +249,17 @@ class BaseEventHandler(object):
 
         serial = request.all_data.get("serial") or \
                  content.get("detail", {}).get("serial")
-        token_obj_list = get_tokens(serial=serial)
         tokenrealms = []
         tokentype = None
         token_obj = None
-        if token_obj_list:
+        if serial:
+            # We have determined the serial number from the request.
+            token_obj_list = get_tokens(serial=serial)
+        else:
+            # We have to determine the token via the user object. But only if
+            #  the user has only one token
+            token_obj_list = get_tokens(user=user)
+        if len(token_obj_list) == 1:
             token_obj = token_obj_list[0]
             tokenrealms = token_obj.get_realms()
             tokentype = token_obj.get_tokentype()
@@ -221,8 +279,9 @@ class BaseEventHandler(object):
 
         # Check result_value only if the check condition is still True
         if "result_value" in conditions and res:
-            res = content.get("result", {}).get("value") == conditions.get(
-                "result_value")
+            condition_value = conditions.get("result_value")
+            result_value = content.get("result", {}).get("value")
+            res = condition_value == str(result_value)
 
         # checking of max-failcounter state of the token
         if "token_locked" in conditions and res:
@@ -244,43 +303,75 @@ class BaseEventHandler(object):
                     res = True
                     break
 
-        if "tokentype" in conditions and res and tokentype:
-            res = False
-            if tokentype in conditions.get("tokentype").split(","):
-                res = True
-
         if "serial" in conditions and res and serial:
             serial_match = conditions.get("serial")
             res = bool(re.match(serial_match, serial))
 
-        if CONDITION.TOKEN_HAS_OWNER in conditions and res and token_obj:
-            uid = token_obj.get_user_id()
-            check = conditions.get(CONDITION.TOKEN_HAS_OWNER)
-            if uid and check in ["True", True]:
-                res = True
-            elif not uid and check in ["False", False]:
-                res = True
-            else:
-                log.debug("Condition token_has_owner for token {0!r} "
-                          "not fulfilled.".format(token_obj))
-                res = False
-
-        if CONDITION.TOKEN_IS_ORPHANED in conditions and res and token_obj:
-            uid = token_obj.get_user_id()
-            orphaned = uid and not user
-            check = conditions.get(CONDITION.TOKEN_IS_ORPHANED)
-            if orphaned and check in ["True", True]:
-                res = True
-            elif not orphaned and check in ["False", False]:
-                res = True
-            else:
-                log.debug("Condition token_is_orphaned for token {0!r} not "
-                          "fulfilled.".format(token_obj))
-                res = False
-
         if CONDITION.USER_TOKEN_NUMBER in conditions and res and user:
             num_tokens = get_tokens(user=user, count=True)
             res = num_tokens == int(conditions.get(CONDITION.USER_TOKEN_NUMBER))
+
+        # Token specific conditions
+        if token_obj:
+            if CONDITION.TOKENTYPE in conditions and res:
+                res = False
+                if tokentype in conditions.get(CONDITION.TOKENTYPE).split(","):
+                    res = True
+
+            if CONDITION.TOKEN_HAS_OWNER in conditions and res:
+                uid = token_obj.get_user_id()
+                check = conditions.get(CONDITION.TOKEN_HAS_OWNER)
+                if uid and check in ["True", True]:
+                    res = True
+                elif not uid and check in ["False", False]:
+                    res = True
+                else:
+                    log.debug("Condition token_has_owner for token {0!r} "
+                              "not fulfilled.".format(token_obj))
+                    res = False
+
+            if CONDITION.TOKEN_IS_ORPHANED in conditions and res:
+                uid = token_obj.get_user_id()
+                orphaned = uid and not user
+                check = conditions.get(CONDITION.TOKEN_IS_ORPHANED)
+                if orphaned and check in ["True", True]:
+                    res = True
+                elif not orphaned and check in ["False", False]:
+                    res = True
+                else:
+                    log.debug("Condition token_is_orphaned for token {0!r} not "
+                              "fulfilled.".format(token_obj))
+                    res = False
+
+            if CONDITION.TOKEN_VALIDITY_PERIOD in conditions and res:
+                valid = token_obj.check_validity_period()
+                res = (conditions.get(CONDITION.TOKEN_VALIDITY_PERIOD)
+                       in ["True", True]) == valid
+
+            if CONDITION.OTP_COUNTER in conditions and res:
+                res = token_obj.token.count == \
+                      int(conditions.get(CONDITION.OTP_COUNTER))
+
+            if CONDITION.LAST_AUTH in conditions and res:
+                res = not token_obj.check_last_auth_newer(conditions.get(
+                    CONDITION.LAST_AUTH))
+
+            if CONDITION.COUNT_AUTH in conditions and res:
+                count = token_obj.get_count_auth()
+                cond = conditions.get(CONDITION.COUNT_AUTH)
+                res = compare_condition(cond, count)
+
+            if CONDITION.COUNT_AUTH_SUCCESS in conditions and res:
+                count = token_obj.get_count_auth_success()
+                cond = conditions.get(CONDITION.COUNT_AUTH_SUCCESS)
+                res = compare_condition(cond, count)
+
+            if CONDITION.COUNT_AUTH_FAIL in conditions and res:
+                count = token_obj.get_count_auth()
+                c_success = token_obj.get_count_auth_success()
+                c_fail = count - c_success
+                cond = conditions.get(CONDITION.COUNT_AUTH_FAIL)
+                res = compare_condition(cond, c_fail)
 
         return res
 

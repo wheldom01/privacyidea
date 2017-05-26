@@ -3,6 +3,8 @@
 # http://www.privacyidea.org
 # (c) cornelius kölbel, privacyidea.org
 #
+# 2016-12-20 Cornelius Kölbel <cornelius.koelbel@netknights.it>
+#            Restrict download to certain time
 # 2015-07-16 Cornelius Kölbel, <cornelius.koelbel@netknights.it>
 #            Add statistics endpoint
 # 2015-01-20 Cornelius Kölbel, <cornelius@privacyidea.org>
@@ -31,7 +33,8 @@ from flask import (Blueprint,
                    request, current_app, Response,
                    stream_with_context)
 from lib.utils import (send_result, getParam)
-from ..api.lib.prepolicy import prepolicy, check_base_action, auditlog_age
+from ..api.lib.prepolicy import (prepolicy, check_base_action, auditlog_age,
+                                 allowed_audit_realm)
 from ..api.auth import admin_required
 from ..lib.policy import ACTION
 from flask import g
@@ -39,6 +42,7 @@ import logging
 from ..lib.audit import search, getAudit
 from ..lib.stats import get_statistics
 import datetime
+from privacyidea.lib.utils import parse_timedelta
 
 log = logging.getLogger(__name__)
 
@@ -47,6 +51,7 @@ audit_blueprint = Blueprint('audit_blueprint', __name__)
 
 @audit_blueprint.route('/', methods=['GET'])
 @prepolicy(check_base_action, request, ACTION.AUDIT)
+@prepolicy(allowed_audit_realm, request, ACTION.AUDIT)
 @prepolicy(auditlog_age, request)
 def search_audit():
     """
@@ -95,6 +100,7 @@ def search_audit():
 
 @audit_blueprint.route('/<csvfile>', methods=['GET'])
 @prepolicy(check_base_action, request, ACTION.AUDIT_DOWNLOAD)
+@prepolicy(auditlog_age, request)
 @admin_required
 def download_csv(csvfile=None):
     """
@@ -134,7 +140,14 @@ def download_csv(csvfile=None):
     """
     audit = getAudit(current_app.config)
     g.audit_object.log({'success': True})
-    return Response(stream_with_context(audit.csv_generator(request.all_data)),
+    param = request.all_data
+    if "timelimit" in param:
+        timelimit = parse_timedelta(param["timelimit"])
+        del param["timelimit"]
+    else:
+        timelimit = None
+    return Response(stream_with_context(audit.csv_generator(param=param,
+                                                            timelimit=timelimit)),
                     mimetype='text/csv',
                     headers={"Content-Disposition": ("attachment; "
                                                      "filename=%s" % csvfile)})

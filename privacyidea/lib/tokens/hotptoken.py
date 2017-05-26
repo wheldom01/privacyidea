@@ -50,13 +50,12 @@ from privacyidea.lib.policydecorators import challenge_response_allowed
 from privacyidea.lib.decorators import check_token_locked
 from privacyidea.lib.auth import ROLE
 from privacyidea.lib.policy import SCOPE
-import gettext
+from privacyidea.lib import _
 import traceback
 import logging
 
 optional = True
 required = False
-_ = gettext.gettext
 log = logging.getLogger(__name__)
 
 keylen = {'sha1': 20,
@@ -135,8 +134,8 @@ class HotpTokenClass(TokenClass):
                }
                }
 
-        if key is not None and key in res:
-            ret = res.get(key)
+        if key:
+            ret = res.get(key, {})
         else:
             if ret == 'all':
                 ret = res
@@ -182,7 +181,8 @@ class HotpTokenClass(TokenClass):
                                         hash_algo=params.get("hashlib",
                                                              "sha1"),
                                         digits=params.get("otplen", 6),
-                                        issuer=tokenissuer)
+                                        issuer=tokenissuer,
+                                        user_obj=user)
                     response_detail["googleurl"] = {"description":
                                                     _("URL for google "
                                                       "Authenticator"),
@@ -233,26 +233,23 @@ class HotpTokenClass(TokenClass):
         else:
             hashlibStr = 'sha1'
 
-        # check if the key_size id provided
+        # check if the key_size is provided
         # if not, we could derive it from the hashlib
-        key_size = getParam(upd_param, 'key_size', optional)
+        key_size = getParam(upd_param, 'key_size', optional) \
+                   or getParam(upd_param, 'keysize', optional)
         if key_size is None:
-            upd_param['key_size'] = keylen.get(hashlibStr)
-        otpKey = ''
-        if self.hKeyRequired is True:
-            genkey = int(getParam(upd_param, "genkey", optional) or 0)
-            if 1 == genkey:
-                # if hashlibStr not in keylen dict, this will
-                # raise an Exception
-                otpKey = generate_otpkey(upd_param['key_size'])
-                del upd_param['genkey']
-            else:
-                # genkey not set: check otpkey is given
-                # this will raise an exception if otpkey is not present
-                otpKey = getParam(upd_param, "otpkey", required)
-                # finally set the values for the update
-            upd_param['otpkey'] = otpKey
+            upd_param['keysize'] = keylen.get(hashlibStr)
+
+        if "genkey" in upd_param and "otpkey" in upd_param:
+            # The Base TokenClass does not allow otpkey and genkey at the
+            # same time
+            del upd_param['otpkey']
         upd_param['hashlib'] = hashlibStr
+        # We first need to call the parent class. Since exceptions would be
+        # raised here.
+        TokenClass.update(self, upd_param, reset_failcount)
+
+        # add_tokeninfo and set_otplen save the token object to the database.
         self.add_tokeninfo("hashlib", hashlibStr)
         val = getParam(upd_param, "otplen", optional)
         if val is not None:
@@ -260,7 +257,7 @@ class HotpTokenClass(TokenClass):
         else:
             self.set_otplen(get_from_config("DefaultOtpLen", 6))
 
-        TokenClass.update(self, upd_param, reset_failcount)
+
 
     @property
     def hashlib(self):

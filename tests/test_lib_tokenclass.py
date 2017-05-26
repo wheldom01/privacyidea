@@ -6,15 +6,16 @@ The lib.tokenclass depends on the DB model and lib.user
 PWFILE = "tests/testdata/passwords"
 
 from .base import MyTestCase
-from privacyidea.lib.resolver import (save_resolver)
-from privacyidea.lib.realm import (set_realm)
+from privacyidea.lib.resolver import (save_resolver, delete_resolver)
+from privacyidea.lib.realm import (set_realm, delete_realm)
 from privacyidea.lib.user import (User)
-from privacyidea.lib.tokenclass import (TokenClass,
-                                        DATE_FORMAT)
+from privacyidea.lib.policy import ACTION
+from privacyidea.lib.tokenclass import (TokenClass, DATE_FORMAT)
 from privacyidea.models import (Token,
-                                 Config,
+                                Config,
                                 Challenge)
 import datetime
+from dateutil.tz import tzlocal
 
 
 class TokenBaseTestCase(MyTestCase):
@@ -27,6 +28,7 @@ class TokenBaseTestCase(MyTestCase):
     realm1 = "realm1"
     realm2 = "realm2"
     serial1 = "SE123456"
+    serial2 = "SE222222"
     
     # set_user, get_user, reset, set_user_identifiers
     
@@ -122,6 +124,21 @@ class TokenBaseTestCase(MyTestCase):
 
         c = token.create_challenge()
         self.assertTrue(c[0], c)
+
+        transaction_id = c[2]
+        self.assertEqual(len(transaction_id), 20)
+        # Now we create the challenge with the same transaction_id for
+        # another token.
+        db_token2 = Token(self.serial2, tokentype="spass")
+        db_token2.save()
+        token2 = TokenClass(db_token)
+        c = token2.create_challenge(transaction_id)
+        self.assertEqual(c[2], transaction_id)
+
+        # Now there should be two entries with the same transaction_id
+        r = Challenge.query.filter(
+            Challenge.transaction_id==transaction_id).all()
+        self.assertEqual(len(r), 2)
 
         # set the description
         token.set_description("something new")
@@ -282,63 +299,78 @@ class TokenBaseTestCase(MyTestCase):
         self.assertEqual(token.check_auth_counter(), True)
 
         # handle validity end date
-        token.set_validity_period_end("30/12/14 16:00")
+        token.set_validity_period_end("2014-12-30T16:00+0400")
         end = token.get_validity_period_end()
-        self.assertTrue(end == "30/12/14 16:00", end)
+        self.assertTrue(end == "2014-12-30T16:00+0400", end)
         self.assertRaises(Exception,
                           token.set_validity_period_end, "wrong date")
         # handle validity start date
-        token.set_validity_period_start("30/12/13 16:00")
+        token.set_validity_period_start("2014-12-30T16:00+0400")
         start = token.get_validity_period_start()
-        self.assertTrue(start == "30/12/13 16:00", start)
+        self.assertTrue(start == "2014-12-30T16:00+0400", start)
         self.assertRaises(Exception,
                           token.set_validity_period_start, "wrong date")
         
         self.assertFalse(token.check_validity_period())
         # THe token is valid till 2021, this should be enough!
-        token.set_validity_period_end("30/12/21 16:00")
+        token.set_validity_period_end("2021-12-30T16:00+0200")
         self.assertTrue(token.check_validity_period())
 
         token.set_validity_period_end("2015-05-22T22:00:00.000Z")
         end = token.get_validity_period_end()
-        self.assertEqual(end, "22/05/15 22:00")
+        self.assertEqual(end, "2015-05-22T22:00+0000")
 
         token.set_validity_period_start("2015-05-22T22:00:00.000Z")
         start = token.get_validity_period_start()
-        self.assertEqual(start, "22/05/15 22:00")
+        self.assertEqual(start, "2015-05-22T22:00+0000")
 
         # check validity period
         # +5 days
-        end_date = datetime.datetime.now() + datetime.timedelta(5)
+        end_date = datetime.datetime.now(tzlocal()) + datetime.timedelta(5)
         end = end_date.strftime(DATE_FORMAT)
         token.set_validity_period_end(end)
         # - 5 days
-        start_date = datetime.datetime.now() - datetime.timedelta(5)
+        start_date = datetime.datetime.now(tzlocal()) - datetime.timedelta(5)
         start = start_date.strftime(DATE_FORMAT)
         token.set_validity_period_start(start)
         self.assertTrue(token.check_validity_period())
         
         # check before start date
         # +5 days
-        end_date = datetime.datetime.now() + datetime.timedelta(5)
+        end_date = datetime.datetime.now(tzlocal()) + datetime.timedelta(5)
         end = end_date.strftime(DATE_FORMAT)
         token.set_validity_period_end(end)
         # + 2 days
-        start_date = datetime.datetime.now() + datetime.timedelta(2)
+        start_date = datetime.datetime.now(tzlocal()) + datetime.timedelta(2)
         start = start_date.strftime(DATE_FORMAT)
         token.set_validity_period_start(start)
         self.assertFalse(token.check_validity_period())
         
         # check after enddate
         # -1 day
-        end_date = datetime.datetime.now() - datetime.timedelta(1)
+        end_date = datetime.datetime.now(tzlocal()) - datetime.timedelta(1)
         end = end_date.strftime(DATE_FORMAT)
         token.set_validity_period_end(end)
         # - 10 days
-        start_date = datetime.datetime.now() - datetime.timedelta(10)
+        start_date = datetime.datetime.now(tzlocal()) - datetime.timedelta(10)
         start = start_date.strftime(DATE_FORMAT)
         token.set_validity_period_start(start)
         self.assertFalse(token.check_validity_period())
+
+    def test_11_old_validity_time(self):
+        old_time_1 = "11/04/17 22:00"  # April 4th
+        old_time_2 = "24/04/17 22:00"  # April 24th
+        db_token = Token.query.filter_by(serial=self.serial1).first()
+        token = TokenClass(db_token)
+        token.add_tokeninfo("validity_period_start", old_time_1)
+        token.add_tokeninfo("validity_period_end", old_time_2)
+        info = token.get_tokeninfo()
+        self.assertEqual(info.get("validity_period_start"), old_time_1)
+        self.assertEqual(info.get("validity_period_end"), old_time_2)
+        e = token.get_validity_period_end()
+        self.assertTrue(e.startswith("2017-04-24T22:00"), e)
+        s = token.get_validity_period_start()
+        self.assertTrue(s.startswith("2017-04-11T22:00"), s)
 
     def test_11_tokeninfo_with_type(self):
         db_token = Token.query.filter_by(serial=self.serial1).first()
@@ -632,21 +664,26 @@ class TokenBaseTestCase(MyTestCase):
         self.assertEqual(r, {})
 
     def test_35_next_pin_change(self):
-        ndate = (datetime.datetime.now() + datetime.timedelta(12)).strftime(
-            "%d/%m/%y")
+        ndate = (datetime.datetime.now(tzlocal()) + datetime.timedelta(12)).strftime(
+            DATE_FORMAT)
 
         db_token = Token.query.filter_by(serial=self.serial1).first()
         token = TokenClass(db_token)
         token.set_next_pin_change("12d")
         r = token.get_tokeninfo("next_pin_change")
-        self.assertTrue(r.startswith(ndate))
+        self.assertEqual(r, ndate)
 
         token.set_next_pin_change("12d", password=True)
         r = token.get_tokeninfo("next_password_change")
-        self.assertTrue(r.startswith(ndate))
+        self.assertEqual(r, ndate)
         # The password must not be changed
         r = token.is_pin_change(password=True)
         self.assertEqual(r, False)
+
+        datestring = "03/04/01 10:00"
+        token.add_tokeninfo("next_pin_change", datestring)
+        r = token.is_pin_change()
+        self.assertTrue(r)
 
     def test_36_change_pin(self):
         db_token = Token.query.filter_by(serial=self.serial1).first()
@@ -656,3 +693,111 @@ class TokenBaseTestCase(MyTestCase):
         # check that the pin needs to be changed
         r = token.is_pin_change()
         self.assertEqual(r, True)
+
+    def test_37_is_orphaned(self):
+        resolver = "orphreso"
+        realm = "orphrealm"
+        rid = save_resolver({"resolver": resolver,
+                             "type": "passwdresolver",
+                             "fileName": PWFILE})
+        self.assertTrue(rid > 0, rid)
+        (added, failed) = set_realm(realm,
+                                    [resolver])
+        self.assertTrue(len(failed) == 0)
+        self.assertTrue(len(added) == 1)
+
+        # Assign token to user "cornelius" "realm1", "resolver1" "uid=1000
+        db_token = Token("orphaned", tokentype="spass", userid=1000,
+                         resolver=resolver, realm=realm)
+        db_token.save()
+        token_obj = TokenClass(db_token)
+        orph = token_obj.is_orphaned()
+        self.assertFalse(orph)
+        # clean up token
+        token_obj.delete_token()
+
+        # Assign a token to a user in a resolver. user_id does not exist
+        db_token = Token("orphaned", tokentype="spass", userid=872812,
+                         resolver=resolver, realm=realm)
+        db_token.save()
+        token_obj = TokenClass(db_token)
+        orph = token_obj.is_orphaned()
+        self.assertTrue(orph)
+        # clean up token
+        token_obj.delete_token()
+
+        # A token, which a resolver name, that does not exist anymore
+        db_token = Token("orphaned", tokentype="spass", userid=1000,
+                         resolver=resolver, realm=realm)
+        db_token.save()
+
+        # delete the realm
+        delete_realm(realm)
+        # token is orphaned
+        token_obj = TokenClass(db_token)
+        orph = token_obj.is_orphaned()
+        self.assertTrue(orph)
+
+        # delete the resolver
+        delete_resolver(resolver)
+        # token is orphaned
+        token_obj = TokenClass(db_token)
+        orph = token_obj.is_orphaned()
+        self.assertTrue(orph)
+        # clean up token
+        token_obj.delete_token()
+
+    def test_38_last_auth(self):
+        db_token = Token("lastauth001", tokentype="spass", userid=1000)
+        db_token.save()
+        token_obj = TokenClass(db_token)
+        tdelta = datetime.timedelta(days=1)
+        token_obj.add_tokeninfo(ACTION.LASTAUTH,
+                                datetime.datetime.now(tzlocal())-tdelta)
+        r = token_obj.check_last_auth_newer("10h")
+        self.assertFalse(r)
+        r = token_obj.check_last_auth_newer("2d")
+        self.assertTrue(r)
+
+        # Old time format
+        # lastauth_alt = datetime.datetime.utcnow().isoformat()
+        token_obj.add_tokeninfo(ACTION.LASTAUTH,
+                                datetime.datetime.utcnow() - tdelta)
+        r = token_obj.check_last_auth_newer("10h")
+        self.assertFalse(r)
+        r = token_obj.check_last_auth_newer("2d")
+        token_obj.delete_token()
+
+    def test_39_generate_sym_key(self):
+        db_token = Token("symkey", tokentype="no_matter", userid=1000)
+        db_token.save()
+        token_obj = TokenClass(db_token)
+        key = token_obj.generate_symmetric_key("1234567890", "abc")
+        self.assertEqual(key, "1234567abc")
+        self.assertRaises(Exception, token_obj.generate_symmetric_key,
+                          "1234", "1234")
+        self.assertRaises(Exception, token_obj.generate_symmetric_key,
+                          "1234", "12345")
+
+        # Now run the init/update process
+        # 1. step
+        token_obj.update({"2stepinit": "1",
+                          "genkey": "1"
+                          })
+
+        self.assertEqual(db_token.rollout_state, "clientwait")
+        self.assertEqual(db_token.active, False)
+        serial = db_token.serial
+        details = token_obj.init_details
+        server_component = details.get("otpkey")
+
+        # 2. step
+        client_component = "AAAAAA"
+        token_obj.update({"serial": serial,
+                          "otpkey": client_component
+                          })
+        self.assertEqual(db_token.rollout_state, "")
+        self.assertEqual(db_token.active, True)
+
+        token_obj.delete_token()
+

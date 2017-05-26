@@ -36,24 +36,26 @@ myApp.controller("tokenController", function (TokenFactory, ConfigFactory,
     };
 
     // This function fills $scope.tokendata
-    $scope.get = function () {
-        $scope.params.serial = "*" + ($scope.serialFilter || "") + "*";
-        $scope.params.type = "*" + ($scope.typeFilter || "") + "*";
-        $scope.params.description = "*" + ($scope.descriptionFilter || "") + "*";
-        $scope.params.userid = "*" + ($scope.userIdFilter || "") + "*";
-        $scope.params.resolver = "*" + ($scope.resolverFilter || "") + "*";
-        $scope.params.pagesize = $scope.token_page_size;
-        if ($scope.reverse) {
-            $scope.params.sortdir = "desc";
-        } else {
-            $scope.params.sortdir = "asc";
-        }
-        TokenFactory.getTokens(function (data) {
-            if (data) {
-                $scope.tokendata = data.result.value;
-                console.log($scope.tokendata);
+    $scope.get = function (live_search) {
+        if ((!$rootScope.search_on_enter) || ($rootScope.search_on_enter && !live_search)) {
+            $scope.params.serial = "*" + ($scope.serialFilter || "") + "*";
+            $scope.params.type = "*" + ($scope.typeFilter || "") + "*";
+            $scope.params.description = "*" + ($scope.descriptionFilter || "") + "*";
+            $scope.params.userid = "*" + ($scope.userIdFilter || "") + "*";
+            $scope.params.resolver = "*" + ($scope.resolverFilter || "") + "*";
+            $scope.params.pagesize = $scope.token_page_size;
+            if ($scope.reverse) {
+                $scope.params.sortdir = "desc";
+            } else {
+                $scope.params.sortdir = "asc";
             }
-        }, $scope.params);
+            TokenFactory.getTokens(function (data) {
+                if (data) {
+                    $scope.tokendata = data.result.value;
+                    console.log($scope.tokendata);
+                }
+            }, $scope.params);
+        }
     };
 
     /*
@@ -87,7 +89,7 @@ myApp.controller("tokenController", function (TokenFactory, ConfigFactory,
     if ($location.path() == "/token/list") {
         $scope.get();
     }
-    
+
     // go to the list view by default
     if ($location.path() == "/token") {
         $location.path("/token/list");
@@ -279,6 +281,7 @@ myApp.controller("tokenEnrollController", function ($scope, TokenFactory,
     });
 
     $scope.CAConnectors = [];
+    $scope.CATemplates = {};
     $scope.radioCSR = 'csrgenerate';
 
 
@@ -287,6 +290,11 @@ myApp.controller("tokenEnrollController", function ($scope, TokenFactory,
         $scope.U2FToken = {};
         $scope.enrolledToken = data.detail;
         $scope.click_wait=false;
+        if ($scope.enrolledToken.otps) {
+            var otps_count = Object.keys($scope.enrolledToken.otps).length;
+            $scope.otp_row_count = parseInt(otps_count/5 + 0.5);
+            $scope.otp_rows = Object.keys($scope.enrolledToken.otps).slice(0, $scope.otp_row_count);
+        }
         if ($scope.enrolledToken.certificate) {
             var blob = new Blob([ $scope.enrolledToken.certificate ],
                 { type : 'text/plain' });
@@ -318,6 +326,9 @@ myApp.controller("tokenEnrollController", function ($scope, TokenFactory,
         console.log($scope.newUser.realm);
         console.log($scope.newUser.pin);
         $scope.newUser.user = fixUser($scope.newUser.user);
+        // convert the date object to a string
+        $scope.form.validity_period_start = date_object_to_string($scope.form.validity_period_start);
+        $scope.form.validity_period_end = date_object_to_string($scope.form.validity_period_end);
         TokenFactory.enroll($scope.newUser,
             $scope.form, $scope.callback);
     };
@@ -367,6 +378,7 @@ myApp.controller("tokenEnrollController", function ($scope, TokenFactory,
             angular.forEach(CAConnectors, function(value, key){
                 $scope.CAConnectors.push(value.connectorname);
                 $scope.form.ca = value.connectorname;
+                $scope.CATemplates[value.connectorname] = value;
             });
             console.log($scope.CAConnectors);
         });
@@ -421,29 +433,18 @@ myApp.controller("tokenEnrollController", function ($scope, TokenFactory,
     $scope.printOtp = function () {
         var serial = $scope.enrolledToken.serial;
         var mywindow = window.open('', 'otpPrintingWindow', 'height=400,width=600');
-        var link1 = '<link' +
+        var css = '<link' +
             ' href="' + instanceUrl +
-            '/static/contrib/css/bootstrap.css" rel="stylesheet">';
-        var link2 = '<link' +
-            ' href="' + instanceUrl +
-            '/static/contrib/css/bootstrap-theme.css"' +
+            '/static/css/papertoken.css"' +
             ' rel="stylesheet">';
-
-        console.log(link1);
-        console.log(link2);
         mywindow.document.write('<html><head><title>'+serial+'</title>');
-        /*
-        TODO: In certain cases (https/instance) the links lead to blank pages!
-        mywindow.document.write(link1);
-        mywindow.document.write(link2);
-        */
-        mywindow.document.write('</head><body><h1>'+serial+'</h1>');
+        mywindow.document.write(css);
+        mywindow.document.write('</head>' +
+            '<body onload="window.print(); window.close()">');
         mywindow.document.write($('#paperOtpTable').html());
         mywindow.document.write('</body></html>');
         mywindow.document.close(); // necessary for IE >= 10
         mywindow.focus(); // necessary for IE >= 10
-        mywindow.print();
-        mywindow.close();
         return true;
     };
 

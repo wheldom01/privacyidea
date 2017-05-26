@@ -131,6 +131,10 @@ def parse_registration_data(reg_data):
     subj_x509name = attestation_cert.get_subject()
     subj_list = subj_x509name.get_components()
     description = ""
+    log.debug("This attestation certificate registered: {0!s}".format(
+        crypto.dump_certificate(crypto.FILETYPE_PEM,
+                                attestation_cert)
+    ))
     for component in subj_list:
         # each component is a tuple. We are looking for CN
         if component[0].upper() == "CN":
@@ -279,7 +283,8 @@ def der_encode(signature_bin_asn):
     :param signature_bin_asn: RAW signature
     :return: DER encoded signature
     """
-    assert(len(signature_bin_asn) == 64)
+    if len(signature_bin_asn) != 64:
+        raise Exception("The signatrue needs to be 64 bytes.")
     vr = signature_bin_asn[:32]
     b2 = 32
     if ord(vr[0]) >= 128:
@@ -320,5 +325,17 @@ def der_decode(signature_bin):
     if b3 == 33:
         vs = vs[1:]
     signature_bin_asn = vr + vs
-    assert(len(signature_bin_asn) == 64)
+    if len(signature_bin_asn) != 64:
+        raise Exception("The signatrue needs to be 64 bytes.")
     return signature_bin_asn
+
+
+def x509name_to_string(x509name):
+    """
+    converts a X509Name to a string as in a DN
+
+    :param x509name: THe X509Name object
+    :return:
+    """
+    components = x509name.get_components()
+    return ",".join(["{0}={1}".format(c[0], c[1]) for c in components])

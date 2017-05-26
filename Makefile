@@ -16,7 +16,7 @@ info:
 	@echo "make ppa          - upload to launchpad stable repo"
 	
 #VERSION=1.3~dev5
-SHORT_VERSION=2.17~dev1
+SHORT_VERSION=2.19
 #SHORT_VERSION=2.10~dev7
 VERSION_JESSIE=${SHORT_VERSION}
 VERSION=${SHORT_VERSION}
@@ -51,6 +51,14 @@ translate:
 	poedit po/de.po
 	poedit po/it.po
 	grunt nggettext_compile
+
+translate-server:
+	(cd privacyidea; pybabel extract -F babel.cfg -o messages.pot .)
+	# pybabel init -i messages.pot -d translations -l de
+	(cd privacyidea; pybabel update -i messages.pot -d translations)
+	(poedit privacyidea/translations/de/LC_MESSAGES/messages.po)
+	# create the .mo file
+	(cd privacyidea; pybabel compile -d translations)
 
 pypi:
 	make doc-man

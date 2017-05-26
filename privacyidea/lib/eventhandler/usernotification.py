@@ -41,7 +41,7 @@ from privacyidea.lib.token import get_tokens
 from privacyidea.lib.smtpserver import get_smtpservers
 from privacyidea.lib.smsprovider.SMSProvider import get_smsgateway
 from privacyidea.lib.user import User, get_user_list
-from gettext import gettext as _
+from privacyidea.lib import _
 from flask import current_app
 import json
 import logging
@@ -231,17 +231,18 @@ class UserNotificationEventHandler(BaseEventHandler):
             }
         elif notify_type == NOTIFY_TYPE.LOGGED_IN_USER:
             # Send notification to the logged in user
-            if logged_in_user.get("user") and not logged_in_user.get("realm"):
+            if logged_in_user.get("username") and not logged_in_user.get(
+                    "realm"):
                 # internal admins have no realm
-                internal_admin = get_db_admin(logged_in_user.get("user"))
+                internal_admin = get_db_admin(logged_in_user.get("username"))
                 if internal_admin:
                     recipient = {
-                        "givenname": logged_in_user.get("user"),
+                        "givenname": logged_in_user.get("username"),
                         "email": internal_admin.email if internal_admin else ""
                     }
             else:
                 # Try to find the user in the specified realm
-                user_obj = User(logged_in_user.get("user"),
+                user_obj = User(logged_in_user.get("username"),
                                 logged_in_user.get("realm"))
                 if user_obj:
                     recipient = {
